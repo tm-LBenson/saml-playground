@@ -44,7 +44,7 @@ try {
 const runtimeConnections = new Map();
 const RUNTIME_CONNECTION_TTL_MS = getRuntimeConnectionTtlMs();
   process.exit(1);
-}
+
 
 function getConnectionIdFromReq(req) {
   // Prefer path param
