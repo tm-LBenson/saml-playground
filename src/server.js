@@ -26,14 +26,22 @@ const {
   safeRelayStateTo,
 } = require("./saml");
 
-const { renderHome, renderMe, renderError, renderImport, renderConnection } = require("./html");
+const {
+  renderHome,
+  renderMe,
+  renderError,
+  renderImport,
+  renderConnection,
+} = require("./html");
 
 const PORT = getPort();
 const BASE_URL = getBaseUrl();
 const TRUST_PROXY = getTrustProxy();
 const ALLOWED_RELAYSTATE_ORIGINS = getAllowedRelayStateOrigins();
+
 let fileConnections = new Map();
 let fileConnectionsError = null;
+
 try {
   fileConnections = loadConnections();
 } catch (e) {
@@ -43,15 +51,10 @@ try {
 
 const runtimeConnections = new Map();
 const RUNTIME_CONNECTION_TTL_MS = getRuntimeConnectionTtlMs();
-  process.exit(1);
-
 
 function getConnectionIdFromReq(req) {
-  // Prefer path param
   if (req.params && req.params.connection) return String(req.params.connection);
-  // Fallback to query
   if (req.query && req.query.connection) return String(req.query.connection);
-  // Sometimes RelayState contains connection id in a URL; we intentionally do NOT parse it (security).
   return null;
 }
 
@@ -67,14 +70,22 @@ function mustGetConnection(req) {
 
 function listAllConnections() {
   const arr = [...fileConnections.values(), ...runtimeConnections.values()];
-  arr.sort((a, b) => String(a.displayName || a.id).localeCompare(String(b.displayName || b.id)));
+  arr.sort((a, b) =>
+    String(a.displayName || a.id).localeCompare(String(b.displayName || b.id)),
+  );
   return arr;
 }
 
 function createRuntimeConnection(conn) {
   const now = Date.now();
   const expiresAtMs = now + RUNTIME_CONNECTION_TTL_MS;
-  const stored = { ...conn, runtime: true, createdAt: new Date(now).toISOString(), expiresAt: new Date(expiresAtMs).toISOString(), expiresAtMs };
+  const stored = {
+    ...conn,
+    runtime: true,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    expiresAtMs,
+  };
   runtimeConnections.set(stored.id, stored);
   return stored;
 }
@@ -89,7 +100,6 @@ function cleanupRuntimeConnections() {
 }
 
 function buildSpIssuer(connectionId) {
-  // Using the metadata URL as issuer keeps it unique per connection and easy to copy/paste.
   return `${BASE_URL}/saml/metadata/${encodeURIComponent(connectionId)}`;
 }
 
@@ -105,27 +115,38 @@ function toPemFromX509CertificateText(text) {
   const b64 = String(text || "").replace(/\s+/g, "");
   if (!b64) return null;
   const lines = b64.match(/.{1,64}/g) || [];
-  return `-----BEGIN CERTIFICATE-----\n${lines.join("\n")}\n-----END CERTIFICATE-----\n`;
+  return `-----BEGIN CERTIFICATE-----\n${lines.join(
+    "\n",
+  )}\n-----END CERTIFICATE-----\n`;
 }
 
 function pickSsoUrlFromMetadata(xml) {
   const all = [];
-  const re = /SingleSignOnService[^>]*Binding="([^"]+)"[^>]*Location="([^"]+)"/gi;
+  const re =
+    /SingleSignOnService[^>]*Binding="([^"]+)"[^>]*Location="([^"]+)"/gi;
   let m;
   while ((m = re.exec(xml)) !== null) {
     all.push({ binding: m[1], location: m[2] });
   }
-  const preferred = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
+  const preferred = all.find(
+    (x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+  );
   if (preferred) return preferred.location;
-  const post = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
+  const post = all.find(
+    (x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+  );
   if (post) return post.location;
   return all.length ? all[0].location : null;
 }
 
 function pickSigningCertFromMetadata(xml) {
-  const keyBlock = xml.match(/<KeyDescriptor[^>]*use="signing"[^>]*>[\s\S]*?<\/KeyDescriptor>/i);
+  const keyBlock = xml.match(
+    /<KeyDescriptor[^>]*use="signing"[^>]*>[\s\S]*?<\/KeyDescriptor>/i,
+  );
   const scope = keyBlock ? keyBlock[0] : xml;
-  const certMatch = scope.match(/<(?:ds:)?X509Certificate>([\s\S]*?)<\/(?:ds:)?X509Certificate>/i);
+  const certMatch = scope.match(
+    /<(?:ds:)?X509Certificate>([\s\S]*?)<\/(?:ds:)?X509Certificate>/i,
+  );
   if (!certMatch) return null;
   return toPemFromX509CertificateText(certMatch[1]);
 }
@@ -137,9 +158,12 @@ function parseIdpMetadataXml(xml) {
   const idpEntityId = entityMatch ? entityMatch[1] : null;
   const idpSsoUrl = pickSsoUrlFromMetadata(text);
   const idpCertPem = pickSigningCertFromMetadata(text);
-  if (!idpEntityId) throw new Error("Could not find EntityDescriptor entityID in metadata.");
-  if (!idpSsoUrl) throw new Error("Could not find SingleSignOnService Location in metadata.");
-  if (!idpCertPem) throw new Error("Could not find a signing X509Certificate in metadata.");
+  if (!idpEntityId)
+    throw new Error("Could not find EntityDescriptor entityID in metadata.");
+  if (!idpSsoUrl)
+    throw new Error("Could not find SingleSignOnService Location in metadata.");
+  if (!idpCertPem)
+    throw new Error("Could not find a signing X509Certificate in metadata.");
   return { idpEntityId, idpSsoUrl, idpCertPem };
 }
 
@@ -149,29 +173,31 @@ async function fetchMetadataUrl(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    const resp = await fetch(u, { signal: controller.signal, redirect: "follow" });
-    if (!resp.ok) throw new Error(`Failed to fetch metadata. HTTP ${resp.status}`);
+    const resp = await fetch(u, {
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    if (!resp.ok)
+      throw new Error(`Failed to fetch metadata. HTTP ${resp.status}`);
     return await resp.text();
   } finally {
     clearTimeout(timer);
   }
 }
 
-
 function ensureConnectionExists(req, res, next) {
   const conn = mustGetConnection(req);
   if (!conn) {
-    return res
-      .status(404)
-      .send(
-        renderError({
-          baseUrl: BASE_URL,
-          title: "Unknown connection",
-          message: `No connection found for: ${getConnectionIdFromReq(req) || "(missing)"}`,
-          details:
-            "Check the URL, or add a connection at /import.",
-        })
-      );
+    return res.status(404).send(
+      renderError({
+        baseUrl: BASE_URL,
+        title: "Unknown connection",
+        message: `No connection found for: ${
+          getConnectionIdFromReq(req) || "(missing)"
+        }`,
+        details: "Check the URL, or add a connection at /import.",
+      }),
+    );
   }
   req.samlConnection = conn;
   next();
@@ -183,17 +209,15 @@ function getOrInitLastSaml(req) {
   return req.session.lastSaml;
 }
 
-// ----- Express app -----
 const app = express();
 app.set("trust proxy", TRUST_PROXY);
 
 app.use(morgan("dev"));
 app.use(compression());
-// Disable CSP because we do inline <details> / <summary> and want easy debugging. Tighten for real apps.
 app.use(
   helmet({
     contentSecurityPolicy: false,
-  })
+  }),
 );
 
 app.use("/public", express.static(path.join(__dirname, "..", "public")));
@@ -210,22 +234,20 @@ app.use(
       httpOnly: true,
       sameSite: "lax",
       secure: cookieSecure,
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      maxAge: 8 * 60 * 60 * 1000,
     },
-  })
+  }),
 );
 
 app.use(passport.initialize());
 app.use(passport.session());
 
-// For a playground, we can serialize the whole user object.
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
 cleanupRuntimeConnections();
 setInterval(cleanupRuntimeConnections, 60 * 1000).unref();
 
-// ----- SAML Strategy (multi-tenant) -----
 passport.use(
   "saml",
   new MultiSamlStrategy(
@@ -234,29 +256,33 @@ passport.use(
       getSamlOptions: function (req, done) {
         const conn = mustGetConnection(req);
         if (!conn) {
-          return done(new Error(`Unknown connection: ${getConnectionIdFromReq(req) || "(missing)"}`));
+          return done(
+            new Error(
+              `Unknown connection: ${
+                getConnectionIdFromReq(req) || "(missing)"
+              }`,
+            ),
+          );
         }
 
         const connectionId = conn.id;
         const issuer = buildSpIssuer(connectionId);
         const callbackUrl = buildAcsUrl(connectionId);
 
-        // NOTE: For learning, we allow IdP-initiated (unsolicited) if configured.
-        // That means we do NOT validate InResponseTo. For production SPs, you generally want this on.
-        const validateInResponseTo = "never";
+        const validateInResponseTo = conn.allowIdpInitiated
+          ? "ifPresent"
+          : "always";
 
         const opts = {
           callbackUrl,
-          callbackURL: callbackUrl, // some examples use callbackURL
+          callbackURL: callbackUrl,
           entryPoint: conn.idpSsoUrl,
           issuer,
           audience: issuer,
-          idpIssuer: conn.idpEntityId, // optional
-          // cert naming differs across versions; set both.
+          idpIssuer: conn.idpEntityId,
           cert: conn.idpCertPem,
           idpCert: conn.idpCertPem,
           identifierFormat: conn.nameIdFormat || undefined,
-          // Keep things forgiving; tweak as needed.
           acceptedClockSkewMs: 3 * 60 * 1000,
           validateInResponseTo,
           disableRequestedAuthnContext: true,
@@ -268,7 +294,9 @@ passport.use(
     function verifySignOn(req, profile, done) {
       try {
         const conn = mustGetConnection(req);
-        const connectionId = conn ? conn.id : getConnectionIdFromReq(req) || "unknown";
+        const connectionId = conn
+          ? conn.id
+          : getConnectionIdFromReq(req) || "unknown";
 
         const last = getOrInitLastSaml(req);
 
@@ -279,7 +307,9 @@ passport.use(
         try {
           responseXml = formatXml(decodeSamlResponse(samlResponseB64));
         } catch (e) {
-          responseXml = `<<failed to decode SAMLResponse>>\n${String(e.message || e)}`;
+          responseXml = `<<failed to decode SAMLResponse>>\n${String(
+            e.message || e,
+          )}`;
         }
 
         last.connectionId = connectionId;
@@ -289,7 +319,9 @@ passport.use(
         last.responseAt = new Date().toISOString();
 
         const user = {
-          id: `${connectionId}:${profile.nameID || profile.email || Date.now()}`,
+          id: `${connectionId}:${
+            profile.nameID || profile.email || Date.now()
+          }`,
           connectionId,
           nameID: profile.nameID,
           nameIDFormat: profile.nameIDFormat,
@@ -304,13 +336,11 @@ passport.use(
       }
     },
     function verifyLogout(req, profile, done) {
-      // Not used in this playground.
       return done(null, profile);
-    }
-  )
+    },
+  ),
 );
 
-// ----- Routes -----
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
 
 app.get("/import", (req, res) => {
@@ -318,8 +348,14 @@ app.get("/import", (req, res) => {
     renderImport({
       baseUrl: BASE_URL,
       error: null,
-      values: { metadataUrl: "", metadataXml: "", displayName: "", allowIdpInitiated: "on", nameIdFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" },
-    })
+      values: {
+        metadataUrl: "",
+        metadataXml: "",
+        displayName: "",
+        allowIdpInitiated: "on",
+        nameIdFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+      },
+    }),
   );
 });
 
@@ -328,8 +364,11 @@ app.post("/import", async (req, res) => {
     const displayName = String(req.body.displayName || "").trim();
     const metadataUrl = String(req.body.metadataUrl || "").trim();
     const metadataXml = String(req.body.metadataXml || "").trim();
-    const allowIdpInitiated = String(req.body.allowIdpInitiated || "").toLowerCase() !== "";
-    const nameIdFormat = String(req.body.nameIdFormat || "").trim() || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
+    const allowIdpInitiated =
+      String(req.body.allowIdpInitiated || "").toLowerCase() !== "";
+    const nameIdFormat =
+      String(req.body.nameIdFormat || "").trim() ||
+      "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 
     const xml = metadataUrl ? await fetchMetadataUrl(metadataUrl) : metadataXml;
     const parsed = parseIdpMetadataXml(xml);
@@ -355,9 +394,12 @@ app.post("/import", async (req, res) => {
           metadataXml: String(req.body.metadataXml || ""),
           displayName: String(req.body.displayName || ""),
           allowIdpInitiated: req.body.allowIdpInitiated ? "on" : "",
-          nameIdFormat: String(req.body.nameIdFormat || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
+          nameIdFormat: String(
+            req.body.nameIdFormat ||
+              "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+          ),
         },
-      })
+      }),
     );
   }
 });
@@ -375,7 +417,6 @@ app.post("/c/:connection/delete", ensureConnectionExists, (req, res) => {
   res.redirect("/");
 });
 
-
 app.get("/", (req, res) => {
   res.send(
     renderHome({
@@ -383,15 +424,10 @@ app.get("/", (req, res) => {
       connections: listAllConnections(),
       fileConnectionsError: fileConnectionsError,
       user: req.user || null,
-    })
+    }),
   );
 });
 
-/**
- * SP metadata endpoint (per connection)
- * Many IdPs accept this minimal metadata. If your IdP requires signing keys here,
- * you can extend this to include KeyDescriptor(s).
- */
 app.get("/saml/metadata/:connection", ensureConnectionExists, (req, res) => {
   const conn = req.samlConnection;
   const connectionId = conn.id;
@@ -403,7 +439,10 @@ app.get("/saml/metadata/:connection", ensureConnectionExists, (req, res) => {
 <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${issuer}">
   <SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"
       AuthnRequestsSigned="false" WantAssertionsSigned="true">
-    <NameIDFormat>${conn.nameIdFormat || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"}</NameIDFormat>
+    <NameIDFormat>${
+      conn.nameIdFormat ||
+      "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+    }</NameIDFormat>
     <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
       Location="${acsUrl}" index="1" isDefault="true"/>
   </SPSSODescriptor>
@@ -414,10 +453,10 @@ app.get("/saml/metadata/:connection", ensureConnectionExists, (req, res) => {
 });
 
 app.get("/login/:connection", ensureConnectionExists, (req, res, next) => {
-  // Capture the redirect URL (with SAMLRequest) so we can decode it in /me.
   const originalRedirect = res.redirect.bind(res);
   res.redirect = function patchedRedirect(statusOrUrl, maybeUrl) {
-    const redirectUrl = typeof statusOrUrl === "string" ? statusOrUrl : maybeUrl;
+    const redirectUrl =
+      typeof statusOrUrl === "string" ? statusOrUrl : maybeUrl;
     try {
       const u = new URL(redirectUrl);
       const samlRequestB64 = u.searchParams.get("SAMLRequest");
@@ -429,20 +468,19 @@ app.get("/login/:connection", ensureConnectionExists, (req, res, next) => {
         try {
           last.requestXml = formatXml(decodeSamlRequest(samlRequestB64));
         } catch (e) {
-          last.requestXml = `<<failed to decode SAMLRequest>>\n${String(e.message || e)}`;
+          last.requestXml = `<<failed to decode SAMLRequest>>\n${String(
+            e.message || e,
+          )}`;
         }
         last.requestRedirectUrl = redirectUrl;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
     return originalRedirect(statusOrUrl, maybeUrl);
   };
 
   passport.authenticate("saml")(req, res, next);
 });
 
-// ACS endpoint (IdP posts SAMLResponse here)
 app.post("/saml/acs/:connection", ensureConnectionExists, (req, res, next) => {
   passport.authenticate("saml", (err, user) => {
     if (err) {
@@ -457,7 +495,7 @@ app.post("/saml/acs/:connection", ensureConnectionExists, (req, res, next) => {
           title: "SAML validation failed",
           message: "The SAMLResponse could not be validated/parsed.",
           details: String(err.stack || err),
-        })
+        }),
       );
     }
 
@@ -468,7 +506,7 @@ app.post("/saml/acs/:connection", ensureConnectionExists, (req, res, next) => {
           title: "Login failed",
           message: "No user was produced by the SAML strategy.",
           details: "Check the IdP attribute mappings and signing cert.",
-        })
+        }),
       );
     }
 
@@ -480,12 +518,13 @@ app.post("/saml/acs/:connection", ensureConnectionExists, (req, res, next) => {
             title: "Session error",
             message: "User authenticated, but we couldn't establish a session.",
             details: String(loginErr.stack || loginErr),
-          })
+          }),
         );
       }
 
       const relayState = req.body && req.body.RelayState;
-      const safeTo = safeRelayStateTo(relayState, ALLOWED_RELAYSTATE_ORIGINS) || "/me";
+      const safeTo =
+        safeRelayStateTo(relayState, ALLOWED_RELAYSTATE_ORIGINS) || "/me";
       return res.redirect(safeTo);
     });
   })(req, res, next);
@@ -498,12 +537,11 @@ app.get("/me", (req, res) => {
       user: req.user || null,
       lastSaml: req.session ? req.session.lastSaml : null,
       nowIso: new Date().toISOString(),
-    })
+    }),
   );
 });
 
 app.all("/logout", (req, res) => {
-  // passport@0.7 supports async logout
   req.logout(function () {
     if (req.session) {
       req.session.destroy(() => res.redirect("/"));
@@ -513,7 +551,6 @@ app.all("/logout", (req, res) => {
   });
 });
 
-// Fallback error handler
 app.use((err, req, res, _next) => {
   console.error(err);
   res.status(500).send(
@@ -522,15 +559,14 @@ app.use((err, req, res, _next) => {
       title: "Server error",
       message: "Unhandled exception.",
       details: String(err.stack || err),
-    })
+    }),
   );
 });
 
 app.listen(PORT, () => {
-  console.log(`\n✅ SAML Playground running`);
-  console.log(`   Local:   http://localhost:${PORT}`);
-  console.log(`   Public:  ${BASE_URL}`);
-  console.log(`\nFile connections: ${fileConnections.size}`);
+  console.log(`\nSAML Playground running`);
+  console.log(`Local: http://localhost:${PORT}`);
+  console.log(`Public: ${BASE_URL}`);
+  console.log(`File connections: ${fileConnections.size}`);
   console.log(`Runtime connections: ${runtimeConnections.size}`);
-  console.log(`\nTip: most IdPs require HTTPS. Use ngrok/cloudflared or deploy to Cloud Run.\n`);
 });
