@@ -1,0 +1,26 @@
+{
+  "name": "saml-playground",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A multi-tenant SAML 2.0 playground (SP-initiated + IdP-initiated) for troubleshooting and learning.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@node-saml/passport-saml": "^5.1.0",
+    "compression": "^1.7.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.17.3",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "passport": "^0.7.0",
+    "xml-formatter": "^3.6.3"
+  }
+}
