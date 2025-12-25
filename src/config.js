@@ -17,7 +17,6 @@ function boolEnv(name, fallback = false) {
 }
 
 function normalizeBaseUrl(baseUrl) {
-  // Remove trailing slash.
   return String(baseUrl).replace(/\/+$/, "");
 }
 
@@ -29,7 +28,6 @@ function getPort() {
 function getBaseUrl() {
   const fromEnv = env("BASE_URL");
   if (fromEnv) return normalizeBaseUrl(fromEnv);
-  // Fallback for local dev (NOTE: most IdPs require HTTPS; use a tunnel like ngrok).
   return normalizeBaseUrl(`http://localhost:${getPort()}`);
 }
 
@@ -39,12 +37,10 @@ function getSessionSecret() {
 
 function getConnectionsFile() {
   const f = env("CONNECTIONS_FILE", "./connections.json");
-  // Resolve relative to project root
   return path.isAbsolute(f) ? f : path.join(process.cwd(), f);
 }
 
 function getTrustProxy() {
-  // 0 means disabled in Express; otherwise trust 1 hop.
   return boolEnv("TRUST_PROXY", false) ? 1 : 0;
 }
 
@@ -55,10 +51,16 @@ function getAllowedRelayStateOrigins() {
     .map((s) => s.trim())
     .filter(Boolean)
     .map(normalizeBaseUrl);
-  // Always allow BASE_URL (same-origin).
   const base = getBaseUrl();
   if (!list.includes(base)) list.push(base);
   return list;
+}
+
+function getRuntimeConnectionTtlMs() {
+  const hoursRaw = env("RUNTIME_CONNECTION_TTL_HOURS", "12");
+  const hours = Number(hoursRaw);
+  const h = Number.isFinite(hours) && hours > 0 ? hours : 12;
+  return h * 60 * 60 * 1000;
 }
 
 function validateConnection(conn) {
@@ -117,5 +119,6 @@ module.exports = {
   getConnectionsFile,
   getTrustProxy,
   getAllowedRelayStateOrigins,
+  getRuntimeConnectionTtlMs,
   loadConnections,
 };

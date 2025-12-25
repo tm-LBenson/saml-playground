@@ -1,11 +1,1 @@
-[
-  {
-    "id": "ri-lab",
-    "displayName": "RI Lab",
-    "idpEntityId": "https://lbenson.us004-rapididentity.com/idp",
-    "idpSsoUrl": "PASTE_HTTP_REDIRECT_SSO_LOCATION_FROM_METADATA_HERE",
-    "idpCertPem": "-----BEGIN CERTIFICATE-----\nPASTE_THE_PEM_FILE_CONTENT_HERE\n-----END CERTIFICATE-----\n",
-    "nameIdFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-    "allowIdpInitiated": true
-  }
-]
+[]

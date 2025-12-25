@@ -8,7 +8,7 @@ This repo is a lightweight **SAML 2.0 Service Provider** you control, built for:
 It supports:
 - ✅ **SP-initiated** login (you click “login” in the app)
 - ✅ **IdP-initiated** login (you click a tile/app in the IdP portal; IdP posts to ACS)
-- ✅ multiple connections (“tenants”) via `connections.json` — great for coworkers
+- ✅ multiple connections via file config or runtime imports (use /import) - great for coworkers
 
 > ⚠️ IdP-initiated SSO accepts unsolicited assertions. That’s fine for a playground, but in production you typically prefer SP-initiated + `InResponseTo` validation.
 
@@ -32,10 +32,24 @@ It supports:
 npm install
 
 # 2) Create your config
+# Optional: file-based connections
 cp connections.example.json connections.json
 
 # 3) Create a local .env
 cp .env.example .env
+
+### Runtime imports (recommended for shared Render deployment)
+
+If you are hosting this once for coworkers (for example on Render), you do not need to commit or upload connections.json.
+
+1. Deploy the app and set BASE_URL.
+2. Open /import.
+3. Paste the IdP metadata URL (or the full metadata XML).
+4. The app creates a unique connection id and shows the SP Entity ID and ACS URL to paste into your RI Federation Partner.
+
+Runtime connections are stored in memory and expire automatically. If the server restarts or goes to sleep, you will re-import.
+You can change the TTL with RUNTIME_CONNECTION_TTL_HOURS (default 12).
+
 ```
 
 Edit `.env` and set:

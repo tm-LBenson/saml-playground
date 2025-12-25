@@ -151,3 +151,51 @@ footer {
 }
 
 code { font-family: var(--mono); }
+
+.card.ok { border-left: 4px solid rgba(81,207,102,0.75); }
+.card.bad { border-left: 4px solid rgba(255,107,107,0.75); background: rgba(255,107,107,0.08); }
+.card.warn { border-left: 4px solid rgba(255,212,59,0.75); background: rgba(255,212,59,0.06); }
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.btn.ghost { background: transparent; }
+
+label {
+  display: block;
+  margin: 10px 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+input, textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+textarea { resize: vertical; min-height: 160px; }
+
+.row { margin-top: 10px; display: flex; gap: 12px; align-items: center; }
+
+label.check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0 0;
+  color: var(--text);
+}
+
+label.check input { width: auto; }

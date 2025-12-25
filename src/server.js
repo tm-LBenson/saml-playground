@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const session = require("express-session");
 const passport = require("passport");
@@ -14,6 +15,7 @@ const {
   getSessionSecret,
   getTrustProxy,
   getAllowedRelayStateOrigins,
+  getRuntimeConnectionTtlMs,
   loadConnections,
 } = require("./config");
 
@@ -24,20 +26,23 @@ const {
   safeRelayStateTo,
 } = require("./saml");
 
-const { renderHome, renderMe, renderError } = require("./html");
+const { renderHome, renderMe, renderError, renderImport, renderConnection } = require("./html");
 
 const PORT = getPort();
 const BASE_URL = getBaseUrl();
 const TRUST_PROXY = getTrustProxy();
 const ALLOWED_RELAYSTATE_ORIGINS = getAllowedRelayStateOrigins();
-
-let connections;
+let fileConnections = new Map();
+let fileConnectionsError = null;
 try {
-  connections = loadConnections();
+  fileConnections = loadConnections();
 } catch (e) {
-  console.error("\n❌ Failed to load connections.\n");
-  console.error(String(e.message || e));
-  console.error("\nFix: copy connections.example.json to connections.json, then fill in your IdP details.\n");
+  fileConnectionsError = String(e.message || e);
+  fileConnections = new Map();
+}
+
+const runtimeConnections = new Map();
+const RUNTIME_CONNECTION_TTL_MS = getRuntimeConnectionTtlMs();
   process.exit(1);
 }
 
@@ -50,10 +55,37 @@ function getConnectionIdFromReq(req) {
   return null;
 }
 
+function getConnectionById(id) {
+  if (!id) return null;
+  return runtimeConnections.get(id) || fileConnections.get(id) || null;
+}
+
 function mustGetConnection(req) {
   const id = getConnectionIdFromReq(req);
-  if (!id) return null;
-  return connections.get(id) || null;
+  return getConnectionById(id);
+}
+
+function listAllConnections() {
+  const arr = [...fileConnections.values(), ...runtimeConnections.values()];
+  arr.sort((a, b) => String(a.displayName || a.id).localeCompare(String(b.displayName || b.id)));
+  return arr;
+}
+
+function createRuntimeConnection(conn) {
+  const now = Date.now();
+  const expiresAtMs = now + RUNTIME_CONNECTION_TTL_MS;
+  const stored = { ...conn, runtime: true, createdAt: new Date(now).toISOString(), expiresAt: new Date(expiresAtMs).toISOString(), expiresAtMs };
+  runtimeConnections.set(stored.id, stored);
+  return stored;
+}
+
+function cleanupRuntimeConnections() {
+  const now = Date.now();
+  for (const [id, conn] of runtimeConnections.entries()) {
+    if (conn.expiresAtMs && conn.expiresAtMs <= now) {
+      runtimeConnections.delete(id);
+    }
+  }
 }
 
 function buildSpIssuer(connectionId) {
@@ -64,6 +96,67 @@ function buildSpIssuer(connectionId) {
 function buildAcsUrl(connectionId) {
   return `${BASE_URL}/saml/acs/${encodeURIComponent(connectionId)}`;
 }
+
+function randomConnectionId() {
+  return "c-" + crypto.randomBytes(4).toString("hex");
+}
+
+function toPemFromX509CertificateText(text) {
+  const b64 = String(text || "").replace(/\s+/g, "");
+  if (!b64) return null;
+  const lines = b64.match(/.{1,64}/g) || [];
+  return `-----BEGIN CERTIFICATE-----\n${lines.join("\n")}\n-----END CERTIFICATE-----\n`;
+}
+
+function pickSsoUrlFromMetadata(xml) {
+  const all = [];
+  const re = /SingleSignOnService[^>]*Binding="([^"]+)"[^>]*Location="([^"]+)"/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    all.push({ binding: m[1], location: m[2] });
+  }
+  const preferred = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
+  if (preferred) return preferred.location;
+  const post = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
+  if (post) return post.location;
+  return all.length ? all[0].location : null;
+}
+
+function pickSigningCertFromMetadata(xml) {
+  const keyBlock = xml.match(/<KeyDescriptor[^>]*use="signing"[^>]*>[\s\S]*?<\/KeyDescriptor>/i);
+  const scope = keyBlock ? keyBlock[0] : xml;
+  const certMatch = scope.match(/<(?:ds:)?X509Certificate>([\s\S]*?)<\/(?:ds:)?X509Certificate>/i);
+  if (!certMatch) return null;
+  return toPemFromX509CertificateText(certMatch[1]);
+}
+
+function parseIdpMetadataXml(xml) {
+  const text = String(xml || "").trim();
+  if (!text) throw new Error("Metadata XML is empty.");
+  const entityMatch = text.match(/<EntityDescriptor[^>]*\sentityID="([^"]+)"/i);
+  const idpEntityId = entityMatch ? entityMatch[1] : null;
+  const idpSsoUrl = pickSsoUrlFromMetadata(text);
+  const idpCertPem = pickSigningCertFromMetadata(text);
+  if (!idpEntityId) throw new Error("Could not find EntityDescriptor entityID in metadata.");
+  if (!idpSsoUrl) throw new Error("Could not find SingleSignOnService Location in metadata.");
+  if (!idpCertPem) throw new Error("Could not find a signing X509Certificate in metadata.");
+  return { idpEntityId, idpSsoUrl, idpCertPem };
+}
+
+async function fetchMetadataUrl(url) {
+  const u = String(url || "").trim();
+  if (!u) throw new Error("Metadata URL is empty.");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(u, { signal: controller.signal, redirect: "follow" });
+    if (!resp.ok) throw new Error(`Failed to fetch metadata. HTTP ${resp.status}`);
+    return await resp.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 
 function ensureConnectionExists(req, res, next) {
   const conn = mustGetConnection(req);
@@ -76,7 +169,7 @@ function ensureConnectionExists(req, res, next) {
           title: "Unknown connection",
           message: `No connection found for: ${getConnectionIdFromReq(req) || "(missing)"}`,
           details:
-            "Check the URL and your connections.json. Each connection must have a unique \"id\".",
+            "Check the URL, or add a connection at /import.",
         })
       );
   }
@@ -129,6 +222,9 @@ app.use(passport.session());
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
+cleanupRuntimeConnections();
+setInterval(cleanupRuntimeConnections, 60 * 1000).unref();
+
 // ----- SAML Strategy (multi-tenant) -----
 passport.use(
   "saml",
@@ -147,7 +243,7 @@ passport.use(
 
         // NOTE: For learning, we allow IdP-initiated (unsolicited) if configured.
         // That means we do NOT validate InResponseTo. For production SPs, you generally want this on.
-        const validateInResponseTo = conn.allowIdpInitiated ? false : false;
+        const validateInResponseTo = "never";
 
         const opts = {
           callbackUrl,
@@ -217,11 +313,75 @@ passport.use(
 // ----- Routes -----
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
 
+app.get("/import", (req, res) => {
+  res.send(
+    renderImport({
+      baseUrl: BASE_URL,
+      error: null,
+      values: { metadataUrl: "", metadataXml: "", displayName: "", allowIdpInitiated: "on", nameIdFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" },
+    })
+  );
+});
+
+app.post("/import", async (req, res) => {
+  try {
+    const displayName = String(req.body.displayName || "").trim();
+    const metadataUrl = String(req.body.metadataUrl || "").trim();
+    const metadataXml = String(req.body.metadataXml || "").trim();
+    const allowIdpInitiated = String(req.body.allowIdpInitiated || "").toLowerCase() !== "";
+    const nameIdFormat = String(req.body.nameIdFormat || "").trim() || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
+
+    const xml = metadataUrl ? await fetchMetadataUrl(metadataUrl) : metadataXml;
+    const parsed = parseIdpMetadataXml(xml);
+    const id = randomConnectionId();
+    const conn = createRuntimeConnection({
+      id,
+      displayName: displayName || parsed.idpEntityId,
+      idpEntityId: parsed.idpEntityId,
+      idpSsoUrl: parsed.idpSsoUrl,
+      idpCertPem: parsed.idpCertPem,
+      nameIdFormat,
+      allowIdpInitiated,
+    });
+
+    res.redirect(`/c/${encodeURIComponent(conn.id)}`);
+  } catch (e) {
+    res.status(400).send(
+      renderImport({
+        baseUrl: BASE_URL,
+        error: String(e.message || e),
+        values: {
+          metadataUrl: String(req.body.metadataUrl || ""),
+          metadataXml: String(req.body.metadataXml || ""),
+          displayName: String(req.body.displayName || ""),
+          allowIdpInitiated: req.body.allowIdpInitiated ? "on" : "",
+          nameIdFormat: String(req.body.nameIdFormat || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
+        },
+      })
+    );
+  }
+});
+
+app.get("/c/:connection", ensureConnectionExists, (req, res) => {
+  const conn = req.samlConnection;
+  res.send(renderConnection({ baseUrl: BASE_URL, conn }));
+});
+
+app.post("/c/:connection/delete", ensureConnectionExists, (req, res) => {
+  const conn = req.samlConnection;
+  if (conn.runtime) {
+    runtimeConnections.delete(conn.id);
+  }
+  res.redirect("/");
+});
+
+
 app.get("/", (req, res) => {
   res.send(
     renderHome({
       baseUrl: BASE_URL,
-      connections,
+      connections: listAllConnections(),
+      fileConnectionsError: fileConnectionsError,
       user: req.user || null,
     })
   );
@@ -342,7 +502,7 @@ app.get("/me", (req, res) => {
   );
 });
 
-app.get("/logout", (req, res) => {
+app.all("/logout", (req, res) => {
   // passport@0.7 supports async logout
   req.logout(function () {
     if (req.session) {
@@ -370,6 +530,7 @@ app.listen(PORT, () => {
   console.log(`\n✅ SAML Playground running`);
   console.log(`   Local:   http://localhost:${PORT}`);
   console.log(`   Public:  ${BASE_URL}`);
-  console.log(`\nConnections loaded: ${connections.size}`);
+  console.log(`\nFile connections: ${fileConnections.size}`);
+  console.log(`Runtime connections: ${runtimeConnections.size}`);
   console.log(`\nTip: most IdPs require HTTPS. Use ngrok/cloudflared or deploy to Cloud Run.\n`);
 });
