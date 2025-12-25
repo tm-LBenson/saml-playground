@@ -24,14 +24,8 @@ function layout({ title, content, baseUrl }) {
 </html>`;
 }
 
-function renderHome({ baseUrl, connections, user, fileConnectionsError }) {
-  const banner = fileConnectionsError
-    ? `<div class="card warn">
-  <h2>Connections file not loaded</h2>
-  <p>${escapeHtml(fileConnectionsError)}</p>
-  <p>You can still use this playground by importing IdP metadata at <a href="/import">/import</a>.</p>
-</div>`
-    : "";
+function renderHome({ baseUrl, connections, user }) {
+  const banner = "";
 
   const cards = (connections || [])
     .map((c) => {
