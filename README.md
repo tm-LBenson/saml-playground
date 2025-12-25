@@ -1,13 +1,11 @@
 # SAML Playground (SP + IdP initiated)
 
 This repo is a lightweight **SAML 2.0 Service Provider** you control, built for:
-
 - practicing SAML configuration in an IdP (RapidIdentity, Okta, Entra ID, etc.)
 - troubleshooting common SAML issues with a place to “wire up” quickly
 - learning how the **SAMLRequest** and **SAMLResponse** look (decoded XML included)
 
 It supports:
-
 - ✅ **SP-initiated** login (you click “login” in the app)
 - ✅ **IdP-initiated** login (you click a tile/app in the IdP portal; IdP posts to ACS)
 - ✅ multiple connections via file config or runtime imports (use /import) - great for coworkers
@@ -80,13 +78,13 @@ Every IdP UI is different, but the required values are always the same:
 
 For a given connection id, for example `rapididentity-dev`, the app shows:
 
-- **ACS URL**
+- **ACS URL**  
   `https://YOUR_BASE_URL/saml/acs/rapididentity-dev`
 
-- **SP Entity ID / Issuer**
+- **SP Entity ID / Issuer**  
   `https://YOUR_BASE_URL/saml/metadata/rapididentity-dev`
 
-- **SP metadata URL** (optional import)
+- **SP metadata URL** (optional import)  
   `https://YOUR_BASE_URL/saml/metadata/rapididentity-dev`
 
 ### IdP values (you copy into `connections.json`)
@@ -147,17 +145,14 @@ Then put them into `connections.json`, e.g.
 ## 6) Troubleshooting hints
 
 ### “Invalid signature” / “Cannot validate signature”
-
 - Wrong IdP cert in `connections.json` (copy the signing cert, not the encryption cert).
 - Assertion not signed, but SP expects signed assertions.
 
 ### “Audience is invalid”
-
 - Audience in assertion doesn’t match SP Entity ID.
 - Try setting your IdP “Audience URI / SP Entity ID” to the metadata URL shown in the UI.
 
 ### Clock / NotBefore / NotOnOrAfter issues
-
 - Check server time.
 - Adjust skew by changing `acceptedClockSkewMs` in `src/server.js`.
 
@@ -189,7 +184,6 @@ gcloud run deploy saml-playground \
 ```
 
 After deploy:
-
 - set a **custom domain** (recommended)
 - update `BASE_URL` to your custom domain
 - update IdP ACS/EntityID if the hostname changed
@@ -201,5 +195,6 @@ After deploy:
 - Don’t use real production IdP certificates/accounts unless allowed.
 - Consider restricting access (IAP, IP allowlist, basic auth, VPN) if deployed publicly.
 - IdP-initiated flow is less secure by design; keep it for learning.
+
 
 Note: This build does not require connections.json. Use /import to create a temporary connection.

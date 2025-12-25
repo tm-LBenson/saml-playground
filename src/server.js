@@ -8,6 +8,7 @@ const helmet = require("helmet");
 const compression = require("compression");
 
 const { MultiSamlStrategy } = require("@node-saml/passport-saml");
+const { InMemoryCacheProvider } = require("@node-saml/node-saml");
 
 const {
   getPort,
@@ -29,6 +30,18 @@ const ALLOWED_RELAYSTATE_ORIGINS = getAllowedRelayStateOrigins();
 
 const runtimeConnections = new Map();
 const RUNTIME_CONNECTION_TTL_MS = getRuntimeConnectionTtlMs();
+
+const cacheProviders = new Map();
+
+function getCacheProvider(connectionId) {
+  const id = String(connectionId || "");
+  if (!id) return new InMemoryCacheProvider();
+  const existing = cacheProviders.get(id);
+  if (existing) return existing;
+  const created = new InMemoryCacheProvider();
+  cacheProviders.set(id, created);
+  return created;
+}
 
 function getConnectionIdFromReq(req) {
   if (req.params && req.params.connection) return String(req.params.connection);
@@ -188,7 +201,7 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: cookieSecure ? "none" : "lax",
       secure: cookieSecure,
       maxAge: 8 * 60 * 60 * 1000,
     },
@@ -232,6 +245,8 @@ passport.use(
           idpCert: conn.idpCertPem,
           identifierFormat: conn.nameIdFormat || undefined,
           acceptedClockSkewMs: 3 * 60 * 1000,
+          requestIdExpirationPeriodMs: 10 * 60 * 1000,
+          cacheProvider: getCacheProvider(connectionId),
           validateInResponseTo,
           disableRequestedAuthnContext: true,
         };
