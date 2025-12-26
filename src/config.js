@@ -1,18 +1,15 @@
-const path = require("path");
 require("dotenv").config();
 
-function env(name, fallback = undefined) {
+function env(name, fallback) {
   const v = process.env[name];
   if (v === undefined || v === null || String(v).trim() === "") return fallback;
   return v;
 }
 
-function boolEnv(name, fallback = false) {
-  const v = env(name);
+function boolEnv(name, fallback) {
+  const v = env(name, undefined);
   if (v === undefined) return fallback;
-  return ["1", "true", "yes", "y", "on"].includes(
-    String(v).toLowerCase().trim(),
-  );
+  return ["1", "true", "yes", "y", "on"].includes(String(v).toLowerCase().trim());
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -25,7 +22,7 @@ function getPort() {
 }
 
 function getBaseUrl() {
-  const fromEnv = env("BASE_URL");
+  const fromEnv = env("BASE_URL", "");
   if (fromEnv) return normalizeBaseUrl(fromEnv);
   return normalizeBaseUrl(`http://localhost:${getPort()}`);
 }
@@ -45,6 +42,7 @@ function getAllowedRelayStateOrigins() {
     .map((s) => s.trim())
     .filter(Boolean)
     .map(normalizeBaseUrl);
+
   const base = getBaseUrl();
   if (!list.includes(base)) list.push(base);
   return list;
