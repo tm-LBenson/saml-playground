@@ -74,7 +74,7 @@ function renderImport({ baseUrl, error, values }) {
           label: "Display name",
           name: "displayName",
           value: v.displayName || "",
-          placeholder: "Optional (e.g. Lewis – RI Tenant)",
+          placeholder: "Optional",
           help: "Shown on the home page. If blank, we’ll use the IdP entityID.",
         })}
 
