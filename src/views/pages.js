@@ -1,191 +1,270 @@
-const { renderLayout, escapeHtml } = require("./layout");
+const { renderLayout } = require("./layout");
+const { escapeHtml, renderJson, renderField, renderRadio, renderSelect } = require("./components");
+const urls = require("../urls");
 
-function renderKeyValue(label, value, { mono = true } = {}) {
-  const v = value == null || value === "" ? "<span class=\"muted\">(empty)</span>" : escapeHtml(String(value));
-  return `<div class="kv">
-    <div class="kv-label">${escapeHtml(label)}</div>
-    <div class="kv-value ${mono ? "mono" : ""}">${v}</div>
-  </div>`;
-}
+function renderHome({ baseUrl, connections, user }) {
+  const sessionHtml = user
+    ? `<div class="callout ok">
+        <div class="callout-title">Signed in</div>
+        <div class="muted">Connection: <code>${escapeHtml(user.connectionId || "")}</code></div>
+        <div class="muted">NameID: <code>${escapeHtml(user.nameID || "")}</code></div>
+      </div>`
+    : `<div class="callout muted">
+        <div class="callout-title">Not signed in</div>
+        <div class="muted">Import metadata to create a connection, then test SP-initiated or IdP-initiated login.</div>
+      </div>`;
 
-function renderHome({ user, connections }) {
-  const list = connections.length
-    ? `<div class="table">
-        <div class="table-head">
-          <div>Name</div>
-          <div class="right">Actions</div>
-        </div>
+  const list = connections && connections.length
+    ? `<div class="grid">
         ${connections
           .map((c) => {
-            const name = c.displayName || c.id;
-            return `<div class="table-row">
-              <div>
-                <div class="strong">${escapeHtml(name)}</div>
-                <div class="muted mono">${escapeHtml(c.id)}</div>
-              </div>
-              <div class="right">
-                <a class="btn" href="/c/${encodeURIComponent(c.id)}">Open</a>
-                <a class="btn btn-secondary" href="/login/${encodeURIComponent(c.id)}">SP login</a>
-              </div>
-            </div>`;
+            const connUrl = urls.buildConnectionUrl(baseUrl, c.id);
+            return `<a class="card" href="${escapeHtml(connUrl)}">
+              <div class="card-title">${escapeHtml(c.displayName || c.id)}</div>
+              <div class="card-sub">${escapeHtml(c.id)}</div>
+            </a>`;
           })
           .join("")}
       </div>`
-    : `<div class="empty">
-        <div class="muted">No connections yet.</div>
-        <a class="btn" href="/import">Import IdP metadata</a>
-      </div>`;
+    : `<div class="empty">No connections yet. <a href="${escapeHtml(baseUrl)}/import">Import metadata</a>.</div>`;
 
   const content = `
-    <h1>Home</h1>
-    <div class="card">
-      <div class="card-title">Connections</div>
+    <div class="page">
+      ${sessionHtml}
+      <div class="page-head">
+        <h1>Connections</h1>
+        <a class="btn primary" href="${escapeHtml(baseUrl)}/import">Import metadata</a>
+      </div>
       ${list}
     </div>
   `;
 
-  return renderLayout({ title: "Home", content });
+  return renderLayout({ title: "Home", baseUrl, activeNav: "home", content });
 }
 
-function renderImport({ error, values }) {
+function renderImport({ baseUrl, error, values }) {
+  const v = values || {};
+  const metadataMode = v.metadataMode || (v.metadataUrl ? "url" : "xml") || "url";
+
+  const errorHtml = error
+    ? `<div class="callout error">
+        <div class="callout-title">Import failed</div>
+        <div class="muted">${escapeHtml(error)}</div>
+      </div>`
+    : "";
+
+  const nameIdOptions = [
+    { value: "", label: "Do not request a NameID format (recommended)" },
+    { value: "urn:oasis:names:tc:SAML:2.0:nameid-format:transient", label: "transient" },
+    { value: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress", label: "emailAddress" },
+    { value: "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent", label: "persistent" },
+    { value: "urn:mace:shibboleth:1.0:nameIdentifier", label: "shibboleth nameIdentifier" },
+  ];
+
   const content = `
-    <h1>Import</h1>
-
-    ${error ? `<div class="alert alert-error"><div class="strong">Import failed</div><div class="mono">${escapeHtml(error)}</div></div>` : ""}
-
-    <form class="card form" method="post" action="/import">
-      <div class="form-row">
-        <label for="displayName">Connection name <span class="muted">(optional)</span></label>
-        <input id="displayName" name="displayName" type="text" value="${escapeHtml(values.displayName || "")}" autocomplete="off" />
-        <div class="hint">A friendly label for your connection list.</div>
+    <div class="page">
+      <div class="page-head">
+        <h1>Import IdP metadata</h1>
       </div>
 
-      <div class="form-row">
-        <div class="label">IdP metadata source</div>
-        <div class="radio-row">
-          <label class="radio">
-            <input type="radio" name="metadataMode" value="url" ${values.metadataMode !== "xml" ? "checked" : ""} />
-            <span>URL</span>
-          </label>
-          <label class="radio">
-            <input type="radio" name="metadataMode" value="xml" ${values.metadataMode === "xml" ? "checked" : ""} />
-            <span>XML</span>
-          </label>
-        </div>
-        <div class="hint">Use a live metadata URL when possible (easier to keep certs fresh).</div>
-      </div>
+      ${errorHtml}
 
-      <div class="form-row" data-mode="url">
-        <label for="metadataUrl">Metadata URL</label>
-        <input id="metadataUrl" name="metadataUrl" type="url" value="${escapeHtml(values.metadataUrl || "")}" placeholder="https://idp.example.com/metadata" />
-      </div>
+      <form class="panel" method="post" action="${escapeHtml(baseUrl)}/import">
+        ${renderField({
+          label: "Display name",
+          name: "displayName",
+          value: v.displayName || "",
+          placeholder: "Optional (e.g. Lewis – RI Tenant)",
+          help: "Shown on the home page. If blank, we’ll use the IdP entityID.",
+        })}
 
-      <div class="form-row" data-mode="xml">
-        <label for="metadataXml">Metadata XML</label>
-        <textarea id="metadataXml" name="metadataXml" rows="9" placeholder="Paste IdP metadata XML here...">${escapeHtml(values.metadataXml || "")}</textarea>
-      </div>
+        ${renderRadio({
+          legend: "Metadata source",
+          name: "metadataMode",
+          value: metadataMode,
+          help: "Choose how you want to provide the IdP metadata.",
+          options: [
+            { value: "url", label: "Metadata URL" },
+            { value: "xml", label: "Metadata XML" },
+          ],
+        })}
 
-      <details class="details">
-        <summary>Advanced</summary>
-
-        <div class="form-row">
-          <label for="metadataNameIdFormat">SP metadata NameIDFormat</label>
-          <input id="metadataNameIdFormat" name="metadataNameIdFormat" type="text" value="${escapeHtml(values.metadataNameIdFormat || "")}" placeholder="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" />
-          <div class="hint">This is what the SP <em>advertises</em> in its metadata.</div>
+        <div class="metadata-mode metadata-mode-url">
+          ${renderField({
+            label: "Metadata URL",
+            name: "metadataUrl",
+            value: v.metadataUrl || "",
+            placeholder: "https://…/idp/profile/Metadata/SAML",
+            help: "Paste the IdP metadata URL.",
+          })}
         </div>
 
-        <div class="form-row">
-          <label for="requestedNameIdFormat">SP-initiated requested NameIDFormat <span class="muted">(optional)</span></label>
-          <input id="requestedNameIdFormat" name="requestedNameIdFormat" type="text" value="${escapeHtml(values.requestedNameIdFormat || "")}" placeholder="(leave blank to not force a NameIDPolicy)" />
-          <div class="hint">If set, the AuthnRequest will include a NameIDPolicy. If the IdP rejects it, the playground auto-retries once without forcing.</div>
+        <div class="metadata-mode metadata-mode-xml">
+          ${renderField({
+            label: "Metadata XML",
+            name: "metadataXml",
+            type: "textarea",
+            value: v.metadataXml || "",
+            placeholder: "<EntityDescriptor …>…</EntityDescriptor>",
+            help: "Paste the full XML metadata.",
+            rows: 10,
+          })}
         </div>
-      </details>
 
-      <div class="form-actions">
-        <button class="btn" type="submit">Create connection</button>
-        <a class="btn btn-secondary" href="/">Cancel</a>
-      </div>
-    </form>
-  `;
+        ${renderSelect({
+          label: "Requested NameID format (SP-initiated only)",
+          name: "requestedNameIdFormat",
+          value: v.requestedNameIdFormat || "",
+          options: nameIdOptions,
+          help: "Some IdPs reject AuthnRequests that ask for an unsupported NameID format. Leaving this blank is the most compatible.",
+        })}
 
-  return renderLayout({ title: "Import", content });
-}
-
-function renderConnection({ baseUrl, conn, sp }) {
-  const content = `
-    <div class="header-row">
-      <div>
-        <h1>Connection</h1>
-        <div class="muted">${escapeHtml(conn.displayName || conn.id)}</div>
-      </div>
-      <form method="post" action="/c/${encodeURIComponent(conn.id)}/delete" onsubmit="return confirm('Delete this connection?')">
-        <button class="btn btn-danger" type="submit">Delete</button>
+        <div class="actions">
+          <button class="btn primary" type="submit">Create connection</button>
+          <a class="btn" href="${escapeHtml(baseUrl)}/">Cancel</a>
+        </div>
       </form>
     </div>
-
-    <div class="grid">
-      <div class="card">
-        <div class="card-title">SP values</div>
-        ${renderKeyValue("Entity ID (Issuer / Audience)", sp.entityId)}
-        ${renderKeyValue("ACS URL", sp.acsUrl)}
-        ${renderKeyValue("Metadata URL", sp.metadataUrl)}
-        ${renderKeyValue("SP-initiated login URL", sp.loginUrl)}
-        <div class="hint">Use the metadata URL when configuring the IdP, and use the login URL for SP-initiated tests.</div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">IdP values (from metadata)</div>
-        ${renderKeyValue("IdP Entity ID", conn.idpEntityId)}
-        ${renderKeyValue("IdP SSO URL", conn.idpSsoUrl)}
-        <details class="details">
-          <summary>IdP signing certificate (PEM)</summary>
-          <pre class="mono">${escapeHtml(conn.idpCertPem || "")}</pre>
-        </details>
-      </div>
-    </div>
   `;
 
-  return renderLayout({ title: "Connection", content });
+  return renderLayout({ title: "Import", baseUrl, activeNav: "import", content });
 }
 
-function renderMe({ user }) {
+function renderConnection({ baseUrl, conn }) {
+  const issuer = urls.buildSpIssuer(baseUrl, conn.id);
+  const acsUrl = urls.buildAcsUrl(baseUrl, conn.id);
+  const metadataUrl = urls.buildMetadataUrl(baseUrl, conn.id);
+  const loginUrl = urls.buildLoginUrl(baseUrl, conn.id);
+
+  const providerId = encodeURIComponent(issuer);
+
   const content = `
-    <h1>Me</h1>
+    <div class="page">
+      <div class="page-head">
+        <h1>${escapeHtml(conn.displayName || conn.id)}</h1>
+        <div class="muted">Connection ID: <code>${escapeHtml(conn.id)}</code></div>
+      </div>
 
-    ${user ? "" : `<div class="alert"><div class="strong">Not logged in</div><div class="muted">Start from a connection and use SP login, or complete an IdP-initiated flow to the ACS.</div></div>`}
+      <section class="panel">
+        <h2>SP values</h2>
 
-    <div class="card">
-      <div class="card-title">Session</div>
-      ${user ? renderKeyValue("Connection", user.connectionId, { mono: true }) : ""}
-      ${user ? renderKeyValue("NameID", user.nameID, { mono: true }) : ""}
-      ${user ? renderKeyValue("NameIDFormat", user.nameIDFormat, { mono: true }) : ""}
-      ${user ? renderKeyValue("Logged in at", user.loggedInAt, { mono: true }) : ""}
+        <div class="kv">
+          <div class="k">SP Entity ID (Issuer)</div>
+          <div class="v"><code>${escapeHtml(issuer)}</code></div>
+
+          <div class="k">ACS URL</div>
+          <div class="v"><code>${escapeHtml(acsUrl)}</code></div>
+
+          <div class="k">SP metadata URL</div>
+          <div class="v"><code>${escapeHtml(metadataUrl)}</code></div>
+
+          <div class="k">SP-initiated login</div>
+          <div class="v"><code>${escapeHtml(loginUrl)}</code></div>
+
+          <div class="k">RapidIdentity providerId (URL-encoded)</div>
+          <div class="v"><code>${escapeHtml(providerId)}</code></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>IdP values (from metadata)</h2>
+        <div class="kv">
+          <div class="k">IdP Entity ID</div>
+          <div class="v"><code>${escapeHtml(conn.idpEntityId)}</code></div>
+
+          <div class="k">IdP SSO URL</div>
+          <div class="v"><code>${escapeHtml(conn.idpSsoUrl)}</code></div>
+        </div>
+
+        ${conn.nameIdFormats && conn.nameIdFormats.length
+          ? `<div class="muted" style="margin-top: 12px;">
+              NameID formats in metadata:
+              ${conn.nameIdFormats.map((x) => `<code>${escapeHtml(x)}</code>`).join(" ")}
+            </div>`
+          : ""}
+
+      </section>
+
+      <section class="panel">
+        <h2>Actions</h2>
+        <div class="actions">
+          <a class="btn primary" href="${escapeHtml(loginUrl)}">Test SP-initiated</a>
+          <a class="btn" href="${escapeHtml(baseUrl)}/me">View /me</a>
+          <form method="post" action="${escapeHtml(baseUrl)}/c/${encodeURIComponent(conn.id)}/delete" style="display:inline;">
+            <button class="btn danger" type="submit" onclick="return confirm('Delete this connection?');">Delete</button>
+          </form>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+          For IdP-initiated tests, configure your IdP to POST the SAMLResponse to the ACS URL above.
+        </div>
+      </section>
     </div>
-
-    ${user ? `<div class="card">
-      <div class="card-title">Profile</div>
-      <pre class="mono">${escapeHtml(JSON.stringify(user.profile || {}, null, 2))}</pre>
-    </div>` : ""}
-
   `;
 
-  return renderLayout({ title: "Me", content });
+  return renderLayout({ title: conn.displayName || conn.id, baseUrl, content });
 }
 
-function renderError({ title, message, details, actionsHtml }) {
+function renderMe({ baseUrl, user }) {
   const content = `
-    <h1>${escapeHtml(title || "Error")}</h1>
+    <div class="page">
+      <div class="page-head">
+        <h1>Me</h1>
+      </div>
 
-    <div class="alert alert-error">
-      <div class="strong">${escapeHtml(message || "Something went wrong.")}</div>
-      ${details ? `<details class="details"><summary>Details</summary><pre class="mono">${escapeHtml(details)}</pre></details>` : ""}
-      <div class="actions">
-        ${actionsHtml || `<a class="btn" href="/">Home</a> <a class="btn btn-secondary" href="/import">Import</a>`}
+      ${user
+        ? `<section class="panel">
+            <h2>Session</h2>
+            <div class="kv">
+              <div class="k">Connection</div>
+              <div class="v"><code>${escapeHtml(user.connectionId || "")}</code></div>
+
+              <div class="k">NameID</div>
+              <div class="v"><code>${escapeHtml(user.nameID || "")}</code></div>
+
+              <div class="k">NameIDFormat</div>
+              <div class="v"><code>${escapeHtml(user.nameIDFormat || "")}</code></div>
+
+              <div class="k">SessionIndex</div>
+              <div class="v"><code>${escapeHtml(user.sessionIndex || "")}</code></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Profile</h2>
+            ${renderJson(user.profile || {})}
+          </section>`
+        : `<div class="callout muted">
+            <div class="callout-title">Not signed in</div>
+            <div class="muted">Start from a connection page and run SP-initiated login, or use your IdP tile.</div>
+          </div>`}
+    </div>
+  `;
+
+  return renderLayout({ title: "Me", baseUrl, activeNav: "me", content });
+}
+
+function renderError({ baseUrl, title, message, details, actions }) {
+  const actionsHtml = actions && actions.length
+    ? `<div class="actions">
+        ${actions.map((a) => `<a class="btn ${a.primary ? "primary" : ""}" href="${escapeHtml(a.href)}">${escapeHtml(a.label)}</a>`).join("")}
+      </div>`
+    : `<div class="actions">
+        <a class="btn" href="${escapeHtml(baseUrl)}/">Home</a>
+        <a class="btn" href="${escapeHtml(baseUrl)}/import">Import</a>
+      </div>`;
+
+  const content = `
+    <div class="page">
+      <div class="callout error">
+        <div class="callout-title">${escapeHtml(title || "Error")}</div>
+        <div class="muted">${escapeHtml(message || "")}</div>
+        ${details ? `<pre class="code"><code>${escapeHtml(details)}</code></pre>` : ""}
+        ${actionsHtml}
       </div>
     </div>
   `;
 
-  return renderLayout({ title: title || "Error", content });
+  return renderLayout({ title: title || "Error", baseUrl, content });
 }
 
 module.exports = {
