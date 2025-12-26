@@ -125,7 +125,7 @@ function authController({ store, views, allowedRelayStateOrigins }) {
       idpIssuer: conn.idpEntityId,
       cert: conn.idpCertPem,
       idpCert: conn.idpCertPem,
-      identifierFormat: conn.nameIdFormat || undefined,
+      identifierFormat: (conn.nameIdFormat && String(conn.nameIdFormat).trim()) ? String(conn.nameIdFormat).trim() : undefined,
       acceptedClockSkewMs: 3 * 60 * 1000,
       validateInResponseTo: "never",
       disableRequestedAuthnContext: true,

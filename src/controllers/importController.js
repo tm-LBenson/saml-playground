@@ -1,5 +1,23 @@
 const { parseIdpMetadataXml, fetchMetadataUrl } = require("../metadata");
 
+function normalizeMode(body) {
+  const raw = String(body.metadataSource || "").toLowerCase().trim();
+  if (raw === "url" || raw === "xml") return raw;
+  const url = String(body.metadataUrl || "").trim();
+  const xml = String(body.metadataXml || "").trim();
+  if (url) return "url";
+  if (xml) return "xml";
+  return "url";
+}
+
+function normalizeNameIdFormat(body) {
+  const raw = String(body.nameIdFormat || "").trim();
+  if (!raw) return "";
+  const lowered = raw.toLowerCase();
+  if (lowered === "any" || lowered === "none") return "";
+  return raw;
+}
+
 function importController({ store, views }) {
   function get(req, res) {
     res.send(
@@ -7,11 +25,12 @@ function importController({ store, views }) {
         baseUrl: req.app.locals.baseUrl,
         error: null,
         values: {
+          metadataSource: "url",
           metadataUrl: "",
           metadataXml: "",
           displayName: "",
           allowIdpInitiated: true,
-          nameIdFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+          nameIdFormat: "",
         },
       })
     );
@@ -19,18 +38,17 @@ function importController({ store, views }) {
 
   async function post(req, res) {
     try {
-      const displayName = String(req.body.displayName || "").trim();
+      const metadataSource = normalizeMode(req.body || {});
       const metadataUrl = String(req.body.metadataUrl || "").trim();
       const metadataXml = String(req.body.metadataXml || "").trim();
-      const allowIdpInitiated = String(req.body.allowIdpInitiated || "").toLowerCase() !== "";
-      const nameIdFormat =
-        String(req.body.nameIdFormat || "").trim() || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
+      const displayName = String(req.body.displayName || "").trim();
+      const allowIdpInitiated = req.body.allowIdpInitiated ? true : false;
+      const nameIdFormat = normalizeNameIdFormat(req.body || {});
 
-      if (!metadataUrl && !metadataXml) {
-        throw new Error("Provide a metadata URL or paste metadata XML.");
-      }
+      if (metadataSource === "url" && !metadataUrl) throw new Error("Metadata URL is required.");
+      if (metadataSource === "xml" && !metadataXml) throw new Error("Metadata XML is required.");
 
-      const xml = metadataUrl ? await fetchMetadataUrl(metadataUrl) : metadataXml;
+      const xml = metadataSource === "url" ? await fetchMetadataUrl(metadataUrl) : metadataXml;
       const parsed = parseIdpMetadataXml(xml);
 
       const conn = store.put({
@@ -39,8 +57,8 @@ function importController({ store, views }) {
         idpSsoUrl: parsed.idpSsoUrl,
         idpCertPem: parsed.idpCertPem,
         idpBaseUrl: parsed.idpBaseUrl,
-        nameIdFormat,
         allowIdpInitiated,
+        nameIdFormat,
       });
 
       res.redirect(`/c/${encodeURIComponent(conn.id)}`);
@@ -50,11 +68,12 @@ function importController({ store, views }) {
           baseUrl: req.app.locals.baseUrl,
           error: String(e.message || e),
           values: {
+            metadataSource: normalizeMode(req.body || {}),
             metadataUrl: String(req.body.metadataUrl || ""),
             metadataXml: String(req.body.metadataXml || ""),
             displayName: String(req.body.displayName || ""),
             allowIdpInitiated: req.body.allowIdpInitiated ? true : false,
-            nameIdFormat: String(req.body.nameIdFormat || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
+            nameIdFormat: String(req.body.nameIdFormat || ""),
           },
         })
       );

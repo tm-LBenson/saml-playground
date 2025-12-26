@@ -54,33 +54,54 @@ function renderImport({ baseUrl, error, values }) {
     ? `<div class="card err"><div style="font-weight:700">Import failed</div><div class="small mono">${esc(error)}</div></div>`
     : "";
 
+  const defaultMode = v.metadataSource === "xml" ? "xml" : "url";
+  const nameIdValue = esc(v.nameIdFormat || "");
+
   const body = `${err}
   <div class="card">
-    <h1>Import IdP metadata</h1>
-    <div class="small">Provide a metadata URL or paste metadata XML.</div>
+    <h1>Import</h1>
     <hr>
+
     <form method="post" action="/import">
-      <div class="grid grid-2">
+      <div class="label">Metadata source</div>
+      <div class="row" style="gap:16px; align-items:center; margin-top:6px">
+        <label class="row" style="gap:8px">
+          <input id="mode_url" type="radio" name="metadataSource" value="url" onchange="setImportMode('url')">
+          <span class="small">SAML metadata URL</span>
+        </label>
+        <label class="row" style="gap:8px">
+          <input id="mode_xml" type="radio" name="metadataSource" value="xml" onchange="setImportMode('xml')">
+          <span class="small">SAML metadata XML</span>
+        </label>
+      </div>
+      <div class="small" style="margin-top:6px">Pick one. The other input will be ignored.</div>
+
+      <div id="wrap_url" style="margin-top:12px">
+        <div class="label">Metadata URL <span class="help" title="Example: https://tenant/idp/profile/Metadata/SAML">?</span></div>
+        <input id="metadataUrl" class="input mono" name="metadataUrl" value="${esc(v.metadataUrl || "")}" placeholder="https://.../idp/profile/Metadata/SAML">
+      </div>
+
+      <div id="wrap_xml" style="margin-top:12px">
+        <div class="label">Metadata XML <span class="help" title="Paste the full IdP metadata XML (EntityDescriptor...)">?</span></div>
+        <textarea id="metadataXml" class="mono" name="metadataXml" placeholder="<EntityDescriptor ...>">${esc(v.metadataXml || "")}</textarea>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:14px">
         <div>
           <div class="label">Display name <span class="help" title="Optional label shown on the home page">?</span></div>
-          <input class="input" name="displayName" value="${esc(v.displayName || "")}">
+          <input class="input" name="displayName" value="${esc(v.displayName || "")}" placeholder="Optional">
         </div>
         <div>
-          <div class="label">NameID format <span class="help" title="Default is emailAddress">?</span></div>
-          <input class="input mono" name="nameIdFormat" value="${esc(
-            v.nameIdFormat || "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-          )}">
+          <div class="label">Requested NameID format <span class="help" title="Leave blank to avoid requiring a NameIDFormat in SP-initiated AuthnRequest (recommended).">?</span></div>
+          <input class="input mono" name="nameIdFormat" list="nameid_options" value="${nameIdValue}" placeholder="(blank = do not request)">
+          <datalist id="nameid_options">
+            <option value="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"></option>
+            <option value="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"></option>
+            <option value="urn:oasis:names:tc:SAML:2.0:nameid-format:transient"></option>
+            <option value="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"></option>
+          </datalist>
+          <div class="small" style="margin-top:6px">If SP-initiated fails with "Required NameID format not supported", leave this blank.</div>
         </div>
-      </div>
-
-      <div style="margin-top:12px">
-        <div class="label">Metadata URL <span class="help" title="Example: https://tenant/idp/profile/Metadata/SAML">?</span></div>
-        <input class="input mono" name="metadataUrl" value="${esc(v.metadataUrl || "")}">
-      </div>
-
-      <div style="margin-top:12px">
-        <div class="label">Metadata XML <span class="help" title="Paste the IdP metadata XML here">?</span></div>
-        <textarea class="mono" name="metadataXml">${esc(v.metadataXml || "")}</textarea>
       </div>
 
       <div style="margin-top:12px" class="row">
@@ -95,6 +116,22 @@ function renderImport({ baseUrl, error, values }) {
         <a class="btn" href="/">Cancel</a>
       </div>
     </form>
+
+    <script>
+      (function () {
+        function setMode(mode) {
+          var isUrl = mode === "url";
+          document.getElementById("mode_url").checked = isUrl;
+          document.getElementById("mode_xml").checked = !isUrl;
+          document.getElementById("wrap_url").style.display = isUrl ? "block" : "none";
+          document.getElementById("wrap_xml").style.display = isUrl ? "none" : "block";
+          document.getElementById("metadataUrl").disabled = !isUrl;
+          document.getElementById("metadataXml").disabled = isUrl;
+        }
+        window.setImportMode = setMode;
+        setMode(${JSON.stringify(defaultMode)});
+      })();
+    </script>
   </div>`;
 
   return layout({ title: "Import", body, activePath: "/import" });
