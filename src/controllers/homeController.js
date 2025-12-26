@@ -1,15 +1,9 @@
-function homeController({ store, views, baseUrl }) {
+function homeController({ store, views }) {
   return {
     home(req, res) {
-      res.send(
-        views.renderHome({
-          baseUrl,
-          connections: store.list(),
-          user: req.user || null,
-        }),
-      );
+      res.send(views.home({ connections: store.listConnections(), user: req.user || null }));
     },
   };
 }
 
-module.exports = homeController;
+module.exports = { homeController };

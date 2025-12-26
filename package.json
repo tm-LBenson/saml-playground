@@ -1,22 +1,22 @@
 {
   "name": "saml-playground",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "private": true,
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
   },
-  "engines": {
-    "node": "20.x"
-  },
   "dependencies": {
-    "@node-saml/passport-saml": "^5.1.0",
+    "@node-saml/passport-saml": "5.1.0",
     "compression": "^1.7.4",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
-    "express-session": "^1.17.3",
+    "express-session": "^1.18.1",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
     "passport": "^0.7.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

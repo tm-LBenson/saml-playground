@@ -1,14 +1,9 @@
-function meController({ views, baseUrl }) {
+function meController({ views }) {
   return {
     me(req, res) {
-      res.send(
-        views.renderMe({
-          baseUrl,
-          user: req.user || null,
-        }),
-      );
+      res.send(views.me({ user: req.user || null, nowIso: new Date().toISOString() }));
     },
   };
 }
 
-module.exports = meController;
+module.exports = { meController };

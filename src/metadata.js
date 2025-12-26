@@ -9,11 +9,9 @@ function pickSsoUrlFromMetadata(xml) {
   const all = [];
   const re = /SingleSignOnService[^>]*Binding="([^"]+)"[^>]*Location="([^"]+)"/gi;
   let m;
-  while ((m = re.exec(xml)) !== null) {
-    all.push({ binding: m[1], location: m[2] });
-  }
-  const preferred = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
-  if (preferred) return preferred.location;
+  while ((m = re.exec(xml)) !== null) all.push({ binding: m[1], location: m[2] });
+  const redirect = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect");
+  if (redirect) return redirect.location;
   const post = all.find((x) => x.binding === "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
   if (post) return post.location;
   return all.length ? all[0].location : null;
@@ -27,42 +25,25 @@ function pickSigningCertFromMetadata(xml) {
   return toPemFromX509CertificateText(certMatch[1]);
 }
 
-function pickNameIdFormatsFromMetadata(xml) {
-  const formats = new Set();
-  const re = /<NameIDFormat>([^<]+)<\/NameIDFormat>/gi;
-  let m;
-  while ((m = re.exec(xml)) !== null) {
-    const v = String(m[1] || "").trim();
-    if (v) formats.add(v);
-  }
-  return [...formats];
-}
-
 function parseIdpMetadataXml(xml) {
   const text = String(xml || "").trim();
   if (!text) throw new Error("Metadata XML is empty.");
-
   const entityMatch = text.match(/<EntityDescriptor[^>]*\sentityID="([^"]+)"/i);
   const idpEntityId = entityMatch ? entityMatch[1] : null;
-
   const idpSsoUrl = pickSsoUrlFromMetadata(text);
   const idpCertPem = pickSigningCertFromMetadata(text);
-  const nameIdFormats = pickNameIdFormatsFromMetadata(text);
-
   if (!idpEntityId) throw new Error("Could not find EntityDescriptor entityID in metadata.");
   if (!idpSsoUrl) throw new Error("Could not find SingleSignOnService Location in metadata.");
-  if (!idpCertPem) throw new Error("Could not find a signing X509Certificate in metadata.");
-
-  return { idpEntityId, idpSsoUrl, idpCertPem, nameIdFormats };
+  if (!idpCertPem) throw new Error("Could not find signing certificate in metadata.");
+  return { idpEntityId, idpSsoUrl, idpCertPem };
 }
 
 async function fetchMetadataUrl(url) {
   const u = String(url || "").trim();
   if (!u) throw new Error("Metadata URL is empty.");
-
+  if (!u.toLowerCase().startsWith("http")) throw new Error("Metadata URL must start with http or https.");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
-
   try {
     const resp = await fetch(u, { signal: controller.signal, redirect: "follow" });
     if (!resp.ok) throw new Error(`Failed to fetch metadata. HTTP ${resp.status}`);
@@ -72,7 +53,4 @@ async function fetchMetadataUrl(url) {
   }
 }
 
-module.exports = {
-  parseIdpMetadataXml,
-  fetchMetadataUrl,
-};
+module.exports = { parseIdpMetadataXml, fetchMetadataUrl };

@@ -1,36 +1,50 @@
 const express = require("express");
 
-function routes({ controllers }) {
+function createRoutes({ store, views, baseUrl, allowedRelayStateOrigins }) {
   const router = express.Router();
 
-  router.get("/healthz", (_req, res) => res.status(200).send("ok"));
+  const { homeController } = require("../controllers/homeController");
+  const { importController } = require("../controllers/importController");
+  const { connectionController } = require("../controllers/connectionController");
+  const { metadataController } = require("../controllers/metadataController");
+  const { meController } = require("../controllers/meController");
+  const { authController } = require("../controllers/authController");
 
-  router.get("/", controllers.home.home);
+  function ensureConnection(req, res, next) {
+    const id = req.params.connection;
+    const conn = store.getConnection(id);
+    if (!conn) {
+      res.status(404).send(views.error({ title: "Unknown connection", message: "Connection not found.", details: "" }));
+      return;
+    }
+    req.samlConnection = conn;
+    next();
+  }
 
-  router.get("/import", controllers.import.get);
-  router.post("/import", controllers.import.post);
+  const home = homeController({ store, views });
+  const imp = importController({ store, views });
+  const connCtrl = connectionController({ store, views, baseUrl });
+  const meta = metadataController({ baseUrl });
+  const me = meController({ views });
+  const auth = authController({ views, baseUrl, allowedRelayStateOrigins });
 
-  router.get("/c/:connection", controllers.connection.load, controllers.connection.show);
-  router.post("/c/:connection/delete", controllers.connection.load, controllers.connection.remove);
+  router.get("/", home.home);
+  router.get("/import", imp.get);
+  router.post("/import", imp.post);
 
-  router.get("/saml/metadata/:connection", controllers.connection.load, controllers.metadata.metadata);
+  router.get("/c/:connection", ensureConnection, connCtrl.show);
+  router.post("/c/:connection/delete", ensureConnection, connCtrl.delete);
 
-  router.get("/login/:connection", controllers.connection.load, controllers.auth.login);
-  router.post("/saml/acs/:connection", controllers.connection.load, controllers.auth.acs);
+  router.get("/saml/metadata/:connection", ensureConnection, meta.metadata);
 
-  router.get("/me", controllers.me.me);
+  router.get("/login/:connection", ensureConnection, auth.login);
+  router.get("/launch/:connection", ensureConnection, auth.launch);
+  router.post("/saml/acs/:connection", ensureConnection, auth.acs);
 
-  router.get("/logout", (req, res) => {
-    req.logout(() => {
-      if (req.session) {
-        req.session.destroy(() => res.redirect("/"));
-      } else {
-        res.redirect("/");
-      }
-    });
-  });
+  router.get("/me", me.me);
+  router.get("/logout", auth.logout);
 
   return router;
 }
 
-module.exports = routes;
+module.exports = { createRoutes };

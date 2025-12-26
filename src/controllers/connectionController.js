@@ -1,36 +1,25 @@
+const urls = require("../urls");
+
 function connectionController({ store, views, baseUrl }) {
-  function load(req, res, next) {
-    const id = String(req.params.connection || "");
-    const conn = store.get(id);
-    if (!conn) {
-      return res.status(404).send(
-        views.renderError({
-          baseUrl,
-          title: "Unknown connection",
-          message: `No connection found for: ${id || "(missing)"}`,
-          details: "Use /import to create a temporary connection.",
-        }),
-      );
-    }
-    req.samlConnection = conn;
-    next();
-  }
+  return {
+    show(req, res) {
+      const conn = req.samlConnection;
+      const spEntityId = urls.buildSpEntityId(baseUrl, conn.id);
+      const acsUrl = urls.buildAcsUrl(baseUrl, conn.id);
+      const metadataUrl = spEntityId;
+      const spLoginUrl = `${baseUrl}/login/${encodeURIComponent(conn.id)}`;
+      const launchUrl = `${baseUrl}/launch/${encodeURIComponent(conn.id)}`;
+      const unsolicitedUrl = urls.buildUnsolicitedUrl({ idpEntityId: conn.idpEntityId, spEntityId, target: `${baseUrl}/me` });
 
-  function show(req, res) {
-    res.send(
-      views.renderConnection({
-        baseUrl,
-        conn: req.samlConnection,
-      }),
-    );
-  }
+      res.send(views.connection({ conn, baseUrl, spEntityId, acsUrl, metadataUrl, spLoginUrl, launchUrl, unsolicitedUrl }));
+    },
 
-  function remove(req, res) {
-    store.delete(req.samlConnection.id);
-    res.redirect("/");
-  }
-
-  return { load, show, remove };
+    delete(req, res) {
+      const conn = req.samlConnection;
+      store.deleteConnection(conn.id);
+      res.redirect("/");
+    },
+  };
 }
 
-module.exports = connectionController;
+module.exports = { connectionController };

@@ -1,4 +1,3 @@
-const path = require("path");
 const express = require("express");
 const session = require("express-session");
 const passport = require("passport");
@@ -6,39 +5,30 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const compression = require("compression");
 
-const { getPort, getBaseUrl, getSessionSecret, getTrustProxy, getAllowedRelayStateOrigins, getRuntimeConnectionTtlMs } = require("./config");
-const { ConnectionStore } = require("./store/connectionStore");
-
-const views = require("./views/pages");
-
-const homeController = require("./controllers/homeController");
-const importController = require("./controllers/importController");
-const connectionController = require("./controllers/connectionController");
-const metadataController = require("./controllers/metadataController");
-const meController = require("./controllers/meController");
-const authController = require("./controllers/authController");
-
-const routes = require("./routes");
+const { getPort, getBaseUrl, getSessionSecret, getTrustProxy, getRuntimeConnectionTtlMs } = require("./config");
+const { createStore } = require("./store");
+const { createRoutes } = require("./routes");
+const { configureSaml } = require("./samlStrategy");
+const pages = require("./views/pages");
 
 const PORT = getPort();
 const BASE_URL = getBaseUrl();
 const TRUST_PROXY = getTrustProxy();
-const ALLOWED_RELAYSTATE_ORIGINS = getAllowedRelayStateOrigins();
+const TTL_MS = getRuntimeConnectionTtlMs();
 
-const store = new ConnectionStore({ ttlMs: getRuntimeConnectionTtlMs() });
+const allowedRelayStateOrigins = [new URL(BASE_URL).origin];
+
+const store = createStore({ ttlMs: TTL_MS });
 
 const app = express();
+app.locals.baseUrl = BASE_URL;
+
 app.set("trust proxy", TRUST_PROXY);
 
 app.use(morgan("dev"));
 app.use(compression());
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // keep simple for a lab app
-  }),
-);
+app.use(helmet({ contentSecurityPolicy: false }));
 
-app.use("/public", express.static(path.join(__dirname, "..", "public")));
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
 const cookieSecure = BASE_URL.startsWith("https://");
@@ -60,40 +50,29 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((user, done) => done(null, user));
+configureSaml({ baseUrl: BASE_URL });
 
-// Cleanup expired runtime connections
-store.cleanup();
 setInterval(() => store.cleanup(), 60 * 1000).unref();
 
-const controllers = {
-  home: homeController({ store, views, baseUrl: BASE_URL }),
-  import: importController({ store, views, baseUrl: BASE_URL }),
-  connection: connectionController({ store, views, baseUrl: BASE_URL }),
-  metadata: metadataController({ views, baseUrl: BASE_URL }),
-  me: meController({ views, baseUrl: BASE_URL }),
-  auth: authController({
-    passport,
+app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+
+app.use(
+  createRoutes({
     store,
-    views,
+    views: {
+      home: pages.renderHome,
+      import: pages.renderImport,
+      connection: pages.renderConnection,
+      me: pages.renderMe,
+      error: pages.renderError,
+    },
     baseUrl: BASE_URL,
-    allowedRelayStateOrigins: ALLOWED_RELAYSTATE_ORIGINS,
+    allowedRelayStateOrigins,
   }),
-};
+);
 
-app.use(routes({ controllers }));
-
-app.use((err, req, res, _next) => {
-  console.error(err);
-  res.status(500).send(
-    views.renderError({
-      baseUrl: BASE_URL,
-      title: "Server error",
-      message: "Unhandled exception.",
-      details: String(err.stack || err),
-    }),
-  );
+app.use((err, _req, res, _next) => {
+  res.status(500).send(pages.renderError({ title: "Server error", message: "Unhandled exception.", details: String(err.stack || err) }));
 });
 
 app.listen(PORT, () => {
