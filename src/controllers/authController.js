@@ -1,102 +1,109 @@
 const passport = require("passport");
+
 const { safeRelayStateTo } = require("../saml");
+const { buildIdpInitiatedUrl } = require("../urls");
+const { renderError } = require("../views/pages");
 
-function buildSpIssuer(baseUrl, connectionId) {
-  return `${baseUrl}/saml/metadata/${encodeURIComponent(connectionId)}`;
-}
-
-function buildAcsUrl(baseUrl, connectionId) {
-  return `${baseUrl}/saml/acs/${encodeURIComponent(connectionId)}`;
-}
-
-function buildUnsolicitedSsoUrl(baseUrl, conn, targetUrl) {
-  const connectionId = conn.id;
-  const spEntityId = buildSpIssuer(baseUrl, connectionId);
-  const idpBase = String(conn.idpBaseUrl || "").replace(/\/+$/, "");
-  let url = `${idpBase}/profile/SAML2/Unsolicited/SSO?providerId=${encodeURIComponent(spEntityId)}`;
-  if (targetUrl) url += `&target=${encodeURIComponent(targetUrl)}`;
-  return url;
-}
-
-function authController({ store, views, allowedRelayStateOrigins }) {
-  function ensure(req, res, next) {
-    const id = req.params && req.params.connection ? String(req.params.connection) : null;
-    const conn = store.get(id);
-    if (!conn) {
-      return res.status(404).send(
-        views.renderError({
-          baseUrl: req.app.locals.baseUrl,
-          title: "Unknown connection",
-          message: `No connection found for: ${id || "(missing)"}`,
-          details: "Import metadata again to create a new connection.",
-        })
-      );
-    }
-    req.samlConnection = conn;
-    next();
-  }
-
+function initAuthController({
+  BASE_URL,
+  ALLOWED_RELAYSTATE_ORIGINS,
+  ensureConnectionExists,
+}) {
   function login(req, res, next) {
     passport.authenticate("saml")(req, res, next);
+  }
+
+  function launch(req, res) {
+    const conn = req.samlConnection;
+    if (!conn.allowIdpInitiated) {
+      return res.status(400).send(
+        renderError({
+          baseUrl: BASE_URL,
+          title: "IdP-initiated disabled",
+          message:
+            "This connection was created with IdP-initiated disabled. Re-import and enable it.",
+          details: "",
+        }),
+      );
+    }
+
+    const url = buildIdpInitiatedUrl({
+      idpEntityId: conn.idpEntityId,
+      spEntityId: `${BASE_URL}/saml/metadata/${encodeURIComponent(conn.id)}`,
+      target: `${BASE_URL}/me`,
+    });
+
+    return res.redirect(url);
   }
 
   function acs(req, res, next) {
     passport.authenticate("saml", (err, user) => {
       if (err) {
+        const conn = req.samlConnection;
+        const msg = String(err.message || err);
+
+        // Auto-fix: if the IdP rejects a requested NameID format, clear it and retry once.
+        if (
+          conn &&
+          conn.nameIdFormat &&
+          /nameid.*format.*not supported/i.test(msg)
+        ) {
+          if (req.session) {
+            if (!req.session.autoFix) req.session.autoFix = {};
+            const key = `clearNameIdFormat:${conn.id}`;
+            if (!req.session.autoFix[key]) {
+              req.session.autoFix[key] = true;
+              conn.nameIdFormat = "";
+              return req.session.save(() =>
+                res.redirect(`/login/${encodeURIComponent(conn.id)}`),
+              );
+            }
+          } else {
+            conn.nameIdFormat = "";
+            return res.redirect(`/login/${encodeURIComponent(conn.id)}`);
+          }
+        }
+
         return res.status(401).send(
-          views.renderError({
-            baseUrl: req.app.locals.baseUrl,
+          renderError({
+            baseUrl: BASE_URL,
             title: "SAML validation failed",
-            message: "The SAMLResponse could not be validated or parsed.",
+            message: "The SAMLResponse could not be validated/parsed.",
             details: String(err.stack || err),
-          })
+          }),
         );
       }
 
       if (!user) {
         return res.status(401).send(
-          views.renderError({
-            baseUrl: req.app.locals.baseUrl,
+          renderError({
+            baseUrl: BASE_URL,
             title: "Login failed",
             message: "No user was produced by the SAML strategy.",
-            details: "",
-          })
+            details: "Check the IdP attribute mappings and signing cert.",
+          }),
         );
       }
 
       req.logIn(user, (loginErr) => {
         if (loginErr) {
           return res.status(500).send(
-            views.renderError({
-              baseUrl: req.app.locals.baseUrl,
+            renderError({
+              baseUrl: BASE_URL,
               title: "Session error",
-              message: "User authenticated, but the session could not be established.",
+              message:
+                "User authenticated, but we couldn't establish a session.",
               details: String(loginErr.stack || loginErr),
-            })
+            }),
           );
         }
 
         const relayState = req.body && req.body.RelayState;
-        const safeTo = safeRelayStateTo(relayState, allowedRelayStateOrigins) || "/me";
-        res.redirect(safeTo);
+        const safeTo =
+          safeRelayStateTo(relayState, ALLOWED_RELAYSTATE_ORIGINS) || "/me";
+        return res.redirect(safeTo);
       });
     })(req, res, next);
-  }
-
-  function launch(req, res) {
-    const baseUrl = req.app.locals.baseUrl;
-    const conn = req.samlConnection;
-    res.redirect(buildUnsolicitedSsoUrl(baseUrl, conn, `${baseUrl}/me`));
-  }
-
-  function me(req, res) {
-    res.send(
-      views.renderMe({
-        baseUrl: req.app.locals.baseUrl,
-        user: req.user || null,
-        nowIso: new Date().toISOString(),
-      })
-    );
   }
 
   function logout(req, res) {
@@ -109,31 +116,12 @@ function authController({ store, views, allowedRelayStateOrigins }) {
     });
   }
 
-  function samlOptions(req, done) {
-    const baseUrl = req.app.locals.baseUrl;
-    const conn = req.samlConnection;
-    const connectionId = conn.id;
-    const issuer = buildSpIssuer(baseUrl, connectionId);
-    const callbackUrl = buildAcsUrl(baseUrl, connectionId);
-
-    done(null, {
-      callbackUrl,
-      callbackURL: callbackUrl,
-      entryPoint: conn.idpSsoUrl,
-      issuer,
-      audience: issuer,
-      idpIssuer: conn.idpEntityId,
-      cert: conn.idpCertPem,
-      idpCert: conn.idpCertPem,
-      identifierFormat: (conn.nameIdFormat && String(conn.nameIdFormat).trim()) ? String(conn.nameIdFormat).trim() : undefined,
-      acceptedClockSkewMs: 3 * 60 * 1000,
-      validateInResponseTo: "never",
-      disableRequestedAuthnContext: true,
-      forceAuthn: false,
-    });
-  }
-
- return { ensure, login, acs, launch, me, logout, samlOptions };
+  return {
+    login: [ensureConnectionExists, login],
+    launch: [ensureConnectionExists, launch],
+    acs: [ensureConnectionExists, acs],
+    logout,
+  };
 }
 
-module.exports = { authController };
+module.exports = { initAuthController };
