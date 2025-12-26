@@ -12,13 +12,12 @@ function layout({ title, content, baseUrl }) {
 <body>
   <header>
     <h1>SAML Playground <span class="badge">${escapeHtml(baseUrl)}</span></h1>
-    <p class="sub">A reusable Service Provider you control - built for learning and troubleshooting (SP initiated and IdP initiated)</p>
   </header>
   <main>
     ${content}
   </main>
   <footer>
-    <small>Tip: Use a browser extension like <code>SAML-tracer</code> to inspect requests and responses. This playground also shows decoded XML on /me.</small>
+
   </footer>
 </body>
 </html>`;
@@ -82,7 +81,6 @@ ${banner}
 <div class="card">
   <h2>Import</h2>
   <p><a class="btn" href="/import">Import IdP metadata</a></p>
-  <p>Each import creates a unique connection id so multiple people can test at the same time.</p>
 </div>
 ${session}
 ${empty}
