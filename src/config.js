@@ -10,7 +10,9 @@ function env(name, fallback = undefined) {
 function boolEnv(name, fallback = false) {
   const v = env(name);
   if (v === undefined) return fallback;
-  return ["1", "true", "yes", "y", "on"].includes(String(v).toLowerCase().trim());
+  return ["1", "true", "yes", "y", "on"].includes(
+    String(v).toLowerCase().trim(),
+  );
 }
 
 function normalizeBaseUrl(baseUrl) {
