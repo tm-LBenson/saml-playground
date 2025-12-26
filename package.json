@@ -1,7 +1,7 @@
 {
   "name": "saml-playground",
   "version": "1.0.0",
-  "description": "SAML Playground (runtime connections)",
+  "private": true,
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
