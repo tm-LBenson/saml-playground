@@ -1,13 +1,15 @@
-function homeController({ store, views }) {
-  return function home(req, res) {
-    res.send(
-      views.renderHome({
-        baseUrl: req.app.locals.baseUrl,
-        connections: store.all(),
-        user: req.user || null,
-      })
-    );
+function homeController({ store, views, baseUrl }) {
+  return {
+    home(req, res) {
+      res.send(
+        views.renderHome({
+          baseUrl,
+          connections: store.list(),
+          user: req.user || null,
+        }),
+      );
+    },
   };
 }
 
-module.exports = { homeController };
+module.exports = homeController;

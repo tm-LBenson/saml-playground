@@ -1,28 +1,37 @@
-function metadataController() {
-  function metadata(req, res) {
-    const baseUrl = req.app.locals.baseUrl;
-    const conn = req.samlConnection;
-    const connectionId = conn.id;
-    const issuer = `${baseUrl}/saml/metadata/${encodeURIComponent(connectionId)}`;
-    const acsUrl = `${baseUrl}/saml/acs/${encodeURIComponent(connectionId)}`;
-    const nameIdFormat = conn.nameIdFormat && String(conn.nameIdFormat).trim() ? String(conn.nameIdFormat).trim() : "";
+const urls = require("../urls");
 
-    const nameIdLine = nameIdFormat ? `    <NameIDFormat>${nameIdFormat}</NameIDFormat>
-` : "";
+function metadataController({ views, baseUrl }) {
+  return {
+    metadata(req, res) {
+      const conn = req.samlConnection;
+      const issuer = urls.buildSpIssuer(baseUrl, conn.id);
+      const acsUrl = urls.buildAcsUrl(baseUrl, conn.id);
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      const nameIdFormats = new Set([
+        "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+        "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
+      ]);
+
+      if (conn.requestedNameIdFormat) nameIdFormats.add(conn.requestedNameIdFormat);
+
+      const nameIdXml = [...nameIdFormats]
+        .map((f) => `    <NameIDFormat>${f}</NameIDFormat>`)
+        .join("\n");
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${issuer}">
   <SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"
       AuthnRequestsSigned="false" WantAssertionsSigned="true">
-${nameIdLine}    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+${nameIdXml}
+    <AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
       Location="${acsUrl}" index="1" isDefault="true"/>
   </SPSSODescriptor>
 </EntityDescriptor>
 `;
-    res.type("application/xml").send(xml);
-  }
 
-  return { metadata };
+      res.type("application/xml").send(xml);
+    },
+  };
 }
 
-module.exports = { metadataController };
+module.exports = metadataController;

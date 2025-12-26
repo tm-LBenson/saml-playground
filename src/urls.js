@@ -1,20 +1,27 @@
-function stripTrailingSlashes(s) {
-  return String(s || "").replace(/\/+$/, "");
+function buildSpIssuer(baseUrl, connectionId) {
+  return `${baseUrl}/saml/metadata/${encodeURIComponent(connectionId)}`;
 }
 
-function buildIdpInitiatedUrl({ idpEntityId, spEntityId, target, shire }) {
-  const idpBase = stripTrailingSlashes(idpEntityId);
-  if (!idpBase) throw new Error("Missing idpEntityId");
-  if (!spEntityId) throw new Error("Missing spEntityId");
-
-  let url = `${idpBase}/profile/SAML2/Unsolicited/SSO?providerId=${encodeURIComponent(
-    spEntityId,
-  )}`;
-
-  if (shire) url += `&shire=${encodeURIComponent(shire)}`;
-  if (target) url += `&target=${encodeURIComponent(target)}`;
-
-  return url;
+function buildAcsUrl(baseUrl, connectionId) {
+  return `${baseUrl}/saml/acs/${encodeURIComponent(connectionId)}`;
 }
 
-module.exports = { buildIdpInitiatedUrl };
+function buildMetadataUrl(baseUrl, connectionId) {
+  return `${baseUrl}/saml/metadata/${encodeURIComponent(connectionId)}`;
+}
+
+function buildLoginUrl(baseUrl, connectionId) {
+  return `${baseUrl}/login/${encodeURIComponent(connectionId)}`;
+}
+
+function buildConnectionUrl(baseUrl, connectionId) {
+  return `${baseUrl}/c/${encodeURIComponent(connectionId)}`;
+}
+
+module.exports = {
+  buildSpIssuer,
+  buildAcsUrl,
+  buildMetadataUrl,
+  buildLoginUrl,
+  buildConnectionUrl,
+};
