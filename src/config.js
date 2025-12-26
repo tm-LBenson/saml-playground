@@ -1,60 +1,60 @@
-require("dotenv").config();
+const crypto = require("crypto");
+const dotenv = require("dotenv");
 
+dotenv.config();
+
+/** @returns {number} */
 function getPort() {
-  const v = process.env.PORT;
-  const n = v ? Number(v) : 3000;
-  return Number.isFinite(n) && n > 0 ? n : 3000;
+  const raw = process.env.PORT || "3000";
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : 3000;
 }
 
+/** @returns {string} */
 function getBaseUrl() {
-  const v = String(process.env.BASE_URL || "").trim().replace(/\/+$/, "");
-  if (v) return v;
+  const env = String(process.env.BASE_URL || "").trim();
+  if (env) return env.replace(/\/+$/, "");
+  // Local fallback
   const port = getPort();
   return `http://localhost:${port}`;
 }
 
+/** @returns {string} */
 function getSessionSecret() {
-  const v = String(process.env.SESSION_SECRET || "").trim();
-  // For production, always set SESSION_SECRET. For a playground, we fall back so it still runs.
-  return v || "dev_secret_change_me";
+  const env = String(process.env.SESSION_SECRET || "").trim();
+  if (env) return env;
+  // Local/dev fallback only
+  return crypto.randomBytes(24).toString("hex");
 }
 
+/** @returns {boolean|number} */
 function getTrustProxy() {
-  const raw = String(process.env.TRUST_PROXY || "").trim().toLowerCase();
-  if (!raw) return 1; // good default for Render/Cloud proxies
-  if (raw === "true" || raw === "1") return 1;
-  if (raw === "false" || raw === "0") return 0;
-  const n = Number(raw);
+  const v = String(process.env.TRUST_PROXY || "").trim().toLowerCase();
+  if (!v) return 0;
+  if (v === "true") return 1;
+  if (v === "false") return 0;
+  const n = Number.parseInt(v, 10);
   return Number.isFinite(n) ? n : 1;
 }
 
+/** @returns {string[]} */
 function getAllowedRelayStateOrigins() {
-  const baseUrl = getBaseUrl();
-  const defaultOrigin = (() => {
-    try {
-      return new URL(baseUrl).origin;
-    } catch {
-      return "";
-    }
-  })();
+  const base = getBaseUrl();
+  const env = String(process.env.ALLOWED_RELAYSTATE_ORIGINS || "").trim();
+  const parts = env
+    ? env.split(",").map((s) => s.trim()).filter(Boolean)
+    : [base];
 
-  const raw = String(process.env.ALLOWED_RELAYSTATE_ORIGINS || "").trim();
-  const list = raw
-    ? raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : [];
-
-  const set = new Set([defaultOrigin, ...list].filter(Boolean));
-  return [...set];
+  // Normalize (strip trailing slash)
+  return parts.map((o) => o.replace(/\/+$/, ""));
 }
 
-function getRuntimeConnectionTtlMs() {
-  const raw = String(process.env.RUNTIME_CONNECTION_TTL_MS || "").trim();
-  if (!raw) return 12 * 60 * 60 * 1000; // 12 hours
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 12 * 60 * 60 * 1000;
+/** @returns {number} */
+function getConnectionTtlMs() {
+  const raw = String(process.env.CONNECTION_TTL_MINUTES || "1440").trim();
+  const n = Number.parseInt(raw, 10);
+  const minutes = Number.isFinite(n) && n > 0 ? n : 1440;
+  return minutes * 60 * 1000;
 }
 
 module.exports = {
@@ -63,5 +63,5 @@ module.exports = {
   getSessionSecret,
   getTrustProxy,
   getAllowedRelayStateOrigins,
-  getRuntimeConnectionTtlMs,
+  getConnectionTtlMs,
 };

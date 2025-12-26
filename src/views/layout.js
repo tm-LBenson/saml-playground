@@ -1,33 +1,32 @@
-const { escapeHtml } = require("./components");
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-function renderLayout({ title, baseUrl, activeNav = "", content }) {
-  const fullTitle = title ? `${title} • SAML Playground` : "SAML Playground";
-
-  function navLink(href, label, key) {
-    const cls = activeNav === key ? "nav-link active" : "nav-link";
-    return `<a class="${cls}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
-  }
-
+function renderLayout({ title, content }) {
+  const pageTitle = title ? `${escapeHtml(title)} · SAML Playground` : "SAML Playground";
   return `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>${escapeHtml(fullTitle)}</title>
-  <link rel="stylesheet" href="${escapeHtml(baseUrl)}/public/style.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${pageTitle}</title>
+  <link rel="stylesheet" href="/public/style.css" />
+  <script src="/public/import.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="container topbar-inner">
-      <div class="brand">
-        <span class="dot" aria-hidden="true"></span>
-        <a href="${escapeHtml(baseUrl)}/" class="brand-title">SAML Playground</a>
-      </div>
+    <div class="topbar-inner">
+      <a class="brand" href="/"><span class="dot" aria-hidden="true"></span><span>SAML Playground</span></a>
       <nav class="nav">
-        ${navLink(`${baseUrl}/`, "Home", "home")}
-        ${navLink(`${baseUrl}/import`, "Import", "import")}
-        ${navLink(`${baseUrl}/me`, "Me", "me")}
-        ${navLink(`${baseUrl}/logout`, "Logout", "logout")}
+        <a href="/">Home</a>
+        <a href="/import">Import</a>
+        <a href="/me">Me</a>
+        <a href="/logout">Logout</a>
       </nav>
     </div>
   </header>
@@ -36,9 +35,11 @@ function renderLayout({ title, baseUrl, activeNav = "", content }) {
     ${content}
   </main>
 
-  <script src="${escapeHtml(baseUrl)}/public/app.js" defer></script>
+  <footer class="footer">
+    <span class="muted">SAML Playground</span>
+  </footer>
 </body>
 </html>`;
 }
 
-module.exports = { renderLayout };
+module.exports = { renderLayout, escapeHtml };

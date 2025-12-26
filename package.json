@@ -1,22 +1,24 @@
 {
   "name": "saml-playground",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "private": true,
+  "description": "Minimal multi-tenant SAML SP playground (SP-initiated + IdP-initiated)",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20"
   },
   "dependencies": {
-    "@node-saml/passport-saml": "^5.1.0",
-    "compression": "^1.7.4",
-    "dotenv": "^17.2.3",
-    "express": "^4.19.2",
-    "express-session": "^1.17.3",
-    "helmet": "^7.1.0",
-    "morgan": "^1.10.0",
-    "passport": "^0.7.0"
+    "@node-saml/passport-saml": "5.1.0",
+    "compression": "1.8.1",
+    "dotenv": "17.2.3",
+    "express": "4.19.2",
+    "express-session": "1.18.2",
+    "helmet": "8.1.0",
+    "morgan": "1.10.0",
+    "passport": "0.7.0"
   }
 }

@@ -1,36 +1,19 @@
-const express = require("express");
+module.exports = function registerRoutes(app, { controllers, ensureConnectionExists }) {
+  app.get("/healthz", (_req, res) => res.status(200).send("ok"));
 
-function routes({ controllers }) {
-  const router = express.Router();
+  app.get("/", controllers.home.index);
 
-  router.get("/healthz", (_req, res) => res.status(200).send("ok"));
+  app.get("/import", controllers.import.form);
+  app.post("/import", controllers.import.submit);
 
-  router.get("/", controllers.home.home);
+  app.get("/c/:connection", ensureConnectionExists, controllers.connection.show);
+  app.post("/c/:connection/delete", ensureConnectionExists, controllers.connection.delete);
 
-  router.get("/import", controllers.import.get);
-  router.post("/import", controllers.import.post);
+  app.get("/saml/metadata/:connection", ensureConnectionExists, controllers.metadata.spMetadata);
 
-  router.get("/c/:connection", controllers.connection.load, controllers.connection.show);
-  router.post("/c/:connection/delete", controllers.connection.load, controllers.connection.remove);
+  app.get("/login/:connection", ensureConnectionExists, controllers.auth.spLogin);
+  app.post("/saml/acs/:connection", ensureConnectionExists, controllers.auth.acs);
 
-  router.get("/saml/metadata/:connection", controllers.connection.load, controllers.metadata.metadata);
-
-  router.get("/login/:connection", controllers.connection.load, controllers.auth.login);
-  router.post("/saml/acs/:connection", controllers.connection.load, controllers.auth.acs);
-
-  router.get("/me", controllers.me.me);
-
-  router.get("/logout", (req, res) => {
-    req.logout(() => {
-      if (req.session) {
-        req.session.destroy(() => res.redirect("/"));
-      } else {
-        res.redirect("/");
-      }
-    });
-  });
-
-  return router;
-}
-
-module.exports = routes;
+  app.get("/me", controllers.me.show);
+  app.get("/logout", controllers.auth.logout);
+};
