@@ -96,6 +96,16 @@ function buildAcsUrl(connectionId) {
   return `${BASE_URL}/saml/acs/${encodeURIComponent(connectionId)}`;
 }
 
+function buildUnsolicitedSsoUrl(conn, connectionId, targetUrl) {
+  const idpBase = String(conn.idpEntityId || "").replace(/\/+$/, "");
+  const providerId = buildSpIssuer(connectionId);
+  let url = `${idpBase}/profile/SAML2/Unsolicited/SSO?providerId=${encodeURIComponent(
+    providerId,
+  )}`;
+  if (targetUrl) url += `&target=${encodeURIComponent(targetUrl)}`;
+  return url;
+}
+
 function randomConnectionId() {
   return "c-" + crypto.randomBytes(4).toString("hex");
 }
@@ -273,6 +283,7 @@ passport.use(
           acceptedClockSkewMs: 3 * 60 * 1000,
           validateInResponseTo,
           disableRequestedAuthnContext: true,
+          forceAuthn: false,
         };
 
         return done(null, opts);
@@ -434,6 +445,13 @@ app.get("/saml/metadata/:connection", ensureConnectionExists, (req, res) => {
 `;
 
   res.type("application/xml").send(xml);
+});
+
+app.get("/launch/:connection", ensureConnectionExists, (req, res) => {
+  const conn = req.samlConnection;
+  const connectionId = conn.id;
+  const targetUrl = `${BASE_URL}/me`;
+  res.redirect(buildUnsolicitedSsoUrl(conn, connectionId, targetUrl));
 });
 
 app.get("/login/:connection", ensureConnectionExists, (req, res, next) => {
