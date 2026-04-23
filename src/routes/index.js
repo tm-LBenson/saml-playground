@@ -39,6 +39,7 @@ function createRoutes({ store, views, baseUrl, allowedRelayStateOrigins }) {
 
   router.get("/login/:connection", ensureConnection, auth.login);
   router.get("/launch/:connection", ensureConnection, auth.launch);
+  router.get("/saml/acs/:connection", ensureConnection, auth.acs);
   router.post("/saml/acs/:connection", ensureConnection, auth.acs);
 
   router.get("/me", me.me);

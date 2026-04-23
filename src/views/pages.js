@@ -150,6 +150,7 @@ function renderConnection({ conn, baseUrl, spEntityId, acsUrl, metadataUrl, spLo
       <input class="input mono" id="acsUrl" readonly value="${esc(acsUrl)}">
       <button class="copyBtn" type="button" data-copy="acsUrl">Copy</button>
     </div>
+    <div class="small" style="margin-top:8px">Metadata advertises both POST (default) and Redirect ACS bindings on this same URL. Redirect callbacks are captured for inspection; POST callbacks are fully processed for login.</div>
 
     <div class="label" style="margin-top:12px">SP metadata URL</div>
     <div class="copyRow" style="margin-top:8px">
